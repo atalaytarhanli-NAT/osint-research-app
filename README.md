@@ -1,8 +1,13 @@
 # OSINT Research App
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/atalaytarhanli-NAT/osint-research-app)
+
 Açık kaynak istihbarat (OSINT) ve dijital iz analizi için çoklu kullanıcılı web uygulaması.
 Bir kişi, kurum, marka, anahtar kelime, sosyal medya hesabı veya link verildiğinde açık web
 kaynaklarından derlenmiş yapılandırılmış bir analiz raporu üretir.
+
+> **Test edildi**: Lokal e2e — bir araştırma çalıştırması ortalama 5–8 saniyede 30–50
+> kaynak toplar. Anahtarsız modda rule-based rapor, anahtar eklendiğinde tam LLM sentezi.
 
 ## Özellikler
 
@@ -35,9 +40,28 @@ uvicorn backend.app.main:app --reload
 
 `http://localhost:8000` → kayıt ol → araştırma başlat.
 
-## Deploy (Render)
+## Deploy (Render) — 5 tıklamada canlı
 
-Repo `render.yaml` ile blueprint olarak hazırdır. Render Dashboard → New → Blueprint → repoyu seç.
+Repo `render.yaml` blueprint içerir. Adımlar:
+
+1. Yukarıdaki **Deploy to Render** butonuna bas (veya
+   [render.com/deploy?repo=…](https://render.com/deploy?repo=https://github.com/atalaytarhanli-NAT/osint-research-app))
+2. Render hesabı **atalay.tarhanli@gmail.com** ile giriş yap
+3. Blueprint apply ekranında repoyu (`atalaytarhanli-NAT/osint-research-app`) seç
+4. **Apply** — `APP_SECRET_KEY` ve `APP_ENCRYPTION_KEY` Render tarafından otomatik üretilir
+5. Build ve deploy ~3–5 dakika; canlı URL Render'dan verilir
+
+**Free tier notu:** SQLite, container içi diske yazılır; restart sonrası kullanıcı
+verisi sıfırlanır. Kalıcılık için `render.yaml`'a `disks:` bloku eklenip Plus plan'a
+geçilmelidir (10 GB ~$1/ay). Free tier ayrıca 15 dk inaktivite sonrası uyur (~30 sn cold start).
+
+## Çalışma sırasında karşılaşabileceğin durumlar
+
+- **İlk açılışta**: Kayıt ol → Settings → istersen Groq veya HuggingFace ücretsiz
+  anahtarını yapıştır → araştır.
+- **LLM olmadan**: Kuralsal rapor üretilir; bulgular var ama sentez sığ olur.
+- **DDG bazen rate-limit yapar**: Wikipedia/HN/Reddit/GitHub fallback'ları çalıştığı
+  için yine yeterli kaynak toplanır.
 
 ## Mimari
 
