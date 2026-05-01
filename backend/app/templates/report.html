@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% block title %}Rapor — OSINT Research{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-7xl px-6 pt-8 pb-16" x-data="reportView({{ job_id }})" x-init="poll()">
+  <a href="/dashboard" class="text-sm text-slate-400 hover:text-slate-200">← Panel</a>
+
+  <div x-show="!job" class="mt-12 text-center text-slate-400">Yükleniyor…</div>
+
+  <template x-if="job">
+    <div class="mt-4">
+      <div class="flex flex-wrap items-baseline gap-3">
+        <h1 class="text-3xl font-bold tracking-tight" x-text="job.target"></h1>
+        <span class="px-2 py-0.5 rounded bg-white/10 text-xs" x-text="job.kind"></span>
+        <span :class="statusClass(job.status)" class="text-xs uppercase tracking-wider" x-text="job.status"></span>
+        <span class="ml-auto text-xs text-slate-500" x-text="job.used_llm || '—'"></span>
+      </div>
+
+      <div x-show="job.status === 'pending' || job.status === 'running'" class="mt-8 rounded-xl border border-brand-500/30 bg-brand-500/5 p-6">
+        <div class="flex items-center gap-3">
+          <div class="size-3 rounded-full bg-brand-400 animate-pulse"></div>
+          <div class="font-medium">Açık kaynaklarda tarama yapılıyor…</div>
+        </div>
+        <div class="mt-3 text-sm text-slate-400">
+          DDG · Wikipedia · Wayback · GitHub · HN · Reddit · sosyal profil testleri paralel çalışıyor.
+        </div>
+      </div>
+
+      <div x-show="job.status === 'error'" class="mt-8 rounded-xl border border-red-500/30 bg-red-500/5 p-6">
+        <div class="font-medium text-red-300">Hata oluştu</div>
+        <pre class="text-xs text-red-200/80 mt-2 whitespace-pre-wrap" x-text="job.error"></pre>
+      </div>
+
+      <template x-if="job.status === 'done' && report">
+        <div class="mt-8 grid xl:grid-cols-[2fr_1fr] gap-8">
+          <div class="space-y-8">
+            <!-- A. Yönetici Özeti -->
+            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-6">
+              <div class="text-xs uppercase tracking-widest text-brand-400">A · Yönetici Özeti</div>
+              <p class="mt-3 text-base text-slate-200" x-text="report.executive_summary.overview"></p>
+              <ul class="mt-4 space-y-1.5 text-sm">
+                <template x-for="(f,i) in report.executive_summary.top_findings" :key="i">
+                  <li class="flex items-start gap-2"><span class="text-brand-400 mt-0.5">▸</span><span x-text="f"></span></li>
+                </template>
+              </ul>
+              <div class="mt-5 flex flex-wrap gap-3 text-xs">
+                <div class="px-3 py-1.5 rounded bg-white/5">
+                  Güven: <span class="font-mono" x-text="(report.executive_summary.confidence*100).toFixed(0)+'%'"></span>
+                </div>
+                <div class="px-3 py-1.5 rounded" :class="riskClass(report.executive_summary.risk_level)">
+                  Risk: <span class="font-mono uppercase" x-text="report.executive_summary.risk_level"></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- B. Kim/Ne -->
+            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-6">
+              <div class="text-xs uppercase tracking-widest text-brand-400">B · Kim / Ne</div>
+              <p class="mt-3 text-sm text-slate-200" x-text="report.identity.definition"></p>
+              <p class="mt-2 text-sm text-slate-400"><b>Bağlam:</b> <span x-text="report.identity.context"></span></p>
+              <p class="mt-2 text-sm text-slate-400"><b>Eş isim riski:</b> <span x-text="report.identity.name_collision_risk"></span></p>
+              <ul class="mt-3 text-sm text-slate-300 list-disc list-inside" x-show="report.identity.known_links?.length">
+                <template x-for="(l,i) in report.identity.known_links" :key="i"><li x-text="l"></li></template>
+              </ul>
+            </div>
+
+            <!-- C. Dijital İz -->
+            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-6">
+              <div class="text-xs uppercase tracking-widest text-brand-400">C · Dijital İz</div>
+              <dl class="mt-3 grid sm:grid-cols-2 gap-3 text-sm">
+                <template x-for="(v,k) in report.digital_footprint" :key="k">
+                  <div class="rounded-lg bg-white/[0.02] p-3">
+                    <dt class="text-xs uppercase tracking-wider text-slate-400" x-text="k"></dt>
+                    <dd class="mt-1 text-slate-200" x-text="v"></dd>
+                  </div>
+                </template>
+              </dl>
+            </div>
+
+            <!-- D. Zaman Çizelgesi -->
+            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-6">
+              <div class="text-xs uppercase tracking-widest text-brand-400">D · Zaman Çizelgesi</div>
+              <ol class="mt-3 relative border-l border-white/10 ml-3 space-y-3">
+                <template x-for="(e,i) in report.timeline" :key="i">
+                  <li class="ml-4">
+                    <div class="absolute -left-1.5 size-3 rounded-full bg-brand-400"></div>
+                    <div class="text-xs font-mono text-brand-300" x-text="e.date"></div>
+                    <div class="text-sm" x-text="e.event"></div>
+                  </li>
+                </template>
+                <li x-show="report.timeline.length===0" class="ml-4 text-slate-500 text-sm">Tarihli bulgu yok.</li>
+              </ol>
+            </div>
+
+            <!-- E. İlişki -->
+            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-6">
+              <div class="text-xs uppercase tracking-widest text-brand-400">E · İlişkiler</div>
+              <div class="mt-3 grid sm:grid-cols-2 gap-2">
+                <template x-for="(r,i) in report.relations" :key="i">
+                  <div class="rounded-lg bg-white/[0.02] p-3 text-sm">
+                    <div class="font-medium" x-text="r.entity"></div>
+                    <div class="text-xs text-slate-400" x-text="r.relation"></div>
+                    <div class="text-[10px] uppercase tracking-wider mt-1" :class="strengthClass(r.strength)" x-text="r.strength"></div>
+                  </div>
+                </template>
+                <div x-show="report.relations.length===0" class="text-slate-500 text-sm">İlişki çıkarılamadı.</div>
+              </div>
+            </div>
+
+            <!-- F. İçerik -->
+            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-6">
+              <div class="text-xs uppercase tracking-widest text-brand-400">F · İçerik Analizi</div>
+              <p class="mt-3 text-sm"><b>Ana iddia:</b> <span x-text="report.content_analysis.main_claim"></span></p>
+              <p class="text-sm text-slate-400"><b>Ton:</b> <span x-text="report.content_analysis.tone"></span></p>
+              <p class="text-sm text-slate-400"><b>Manipülasyon riski:</b> <span x-text="report.content_analysis.manipulation_risk"></span></p>
+              <p class="text-sm text-slate-400"><b>Doğrulanabilirlik:</b> <span class="font-mono" x-text="(report.content_analysis.verifiability*100).toFixed(0)+'%'"></span></p>
+            </div>
+
+            <!-- G. Risk -->
+            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-6">
+              <div class="text-xs uppercase tracking-widest text-brand-400">G · Risk Profili</div>
+              <dl class="mt-3 grid sm:grid-cols-2 gap-3 text-sm">
+                <template x-for="(v,k) in report.risk" :key="k">
+                  <div class="rounded-lg bg-white/[0.02] p-3">
+                    <dt class="text-xs uppercase tracking-wider text-slate-400" x-text="k"></dt>
+                    <dd class="mt-1 text-slate-200" x-text="v"></dd>
+                  </div>
+                </template>
+              </dl>
+            </div>
+
+            <!-- H. Kaynak Tablosu -->
+            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-6">
+              <div class="text-xs uppercase tracking-widest text-brand-400">H · Kaynak Tablosu</div>
+              <div class="mt-3 overflow-auto">
+                <table class="w-full text-xs">
+                  <thead class="text-slate-400">
+                    <tr><th class="text-left px-2 py-1">#</th><th class="text-left px-2 py-1">Kaynak</th><th class="text-left px-2 py-1">Başlık</th><th class="text-left px-2 py-1">Tarih</th><th class="text-left px-2 py-1">Güven</th></tr>
+                  </thead>
+                  <tbody>
+                    <template x-for="(s,i) in sources" :key="i">
+                      <tr class="border-t border-white/5">
+                        <td class="px-2 py-1.5 text-slate-500" x-text="i"></td>
+                        <td class="px-2 py-1.5 text-slate-300" x-text="s.source"></td>
+                        <td class="px-2 py-1.5"><a :href="s.url" target="_blank" class="text-brand-300 hover:underline" x-text="s.title || s.url"></a></td>
+                        <td class="px-2 py-1.5 text-slate-400 font-mono" x-text="s.published_at || '—'"></td>
+                        <td class="px-2 py-1.5 font-mono text-slate-400" x-text="(s.confidence*100).toFixed(0)+'%'"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- I. Sonuç -->
+            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-6">
+              <div class="text-xs uppercase tracking-widest text-brand-400">I · Sonuç ve Öneriler</div>
+              <p class="mt-3 text-sm" x-text="report.conclusion"></p>
+              <div class="mt-4 grid sm:grid-cols-2 gap-3 text-sm">
+                <div>
+                  <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">Açık sorular</div>
+                  <ul class="list-disc list-inside space-y-1 text-slate-300">
+                    <template x-for="(q,i) in report.open_questions" :key="i"><li x-text="q"></li></template>
+                  </ul>
+                </div>
+                <div>
+                  <div class="text-xs uppercase tracking-wider text-slate-400 mb-1">Önerilen sonraki adımlar</div>
+                  <ul class="list-disc list-inside space-y-1 text-slate-300">
+                    <template x-for="(q,i) in report.next_steps" :key="i"><li x-text="q"></li></template>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <aside class="space-y-4">
+            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-5">
+              <div class="text-xs uppercase tracking-widest text-brand-400">İndir / paylaş</div>
+              <div class="mt-3 flex gap-2">
+                <button @click="downloadJson()" class="text-sm rounded-md border border-white/10 px-3 py-1.5 hover:bg-white/5">JSON</button>
+                <button @click="copyMarkdown()" class="text-sm rounded-md border border-white/10 px-3 py-1.5 hover:bg-white/5">Markdown kopyala</button>
+              </div>
+            </div>
+
+            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-5">
+              <div class="text-xs uppercase tracking-widest text-brand-400">Görsel ters arama</div>
+              <p class="text-xs text-slate-400 mt-2">Bir görsel URL'si girin, hızlı kontrol linkleri açın.</p>
+              <input type="url" x-model="imgUrl" placeholder="https://…/image.jpg" class="mt-2 w-full rounded-md bg-white/5 border border-white/10 px-3 py-1.5 text-sm" />
+              <div class="mt-2 flex gap-2 text-xs">
+                <a :href="`https://lens.google.com/uploadbyurl?url=${encodeURIComponent(imgUrl)}`" target="_blank" class="px-2 py-1 rounded bg-white/5 hover:bg-white/10">Google Lens</a>
+                <a :href="`https://yandex.com/images/search?rpt=imageview&url=${encodeURIComponent(imgUrl)}`" target="_blank" class="px-2 py-1 rounded bg-white/5 hover:bg-white/10">Yandex</a>
+                <a :href="`https://www.tineye.com/search?url=${encodeURIComponent(imgUrl)}`" target="_blank" class="px-2 py-1 rounded bg-white/5 hover:bg-white/10">TinEye</a>
+              </div>
+            </div>
+
+            <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-5">
+              <div class="text-xs uppercase tracking-widest text-brand-400">Kaynak dağılımı</div>
+              <div class="mt-3 space-y-1.5 text-xs">
+                <template x-for="(c,k) in groupCounts" :key="k">
+                  <div class="flex items-center gap-2">
+                    <span class="w-20 text-slate-400" x-text="k"></span>
+                    <div class="flex-1 h-1.5 rounded bg-white/5 overflow-hidden">
+                      <div class="h-full bg-brand-400" :style="`width:${(c/maxGroup)*100}%`"></div>
+                    </div>
+                    <span class="font-mono w-6 text-right" x-text="c"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </template>
+    </div>
+  </template>
+</section>
+
+<script>
+  function reportView(jobId) {
+    return {
+      jobId, job: null, report: null, sources: [], imgUrl: '',
+      timer: null,
+      async fetch() {
+        try {
+          this.job = await window.app.api(`/api/research/${this.jobId}`);
+          if (this.job.result) { this.report = this.job.result.report; this.sources = this.job.result.sources || []; }
+        } catch (e) {}
+      },
+      async poll() {
+        await this.fetch();
+        if (this.job && (this.job.status === 'pending' || this.job.status === 'running')) {
+          this.timer = setTimeout(() => this.poll(), 2200);
+        }
+      },
+      get groupCounts() {
+        const c = {};
+        for (const s of this.sources) c[s.kind] = (c[s.kind] || 0) + 1;
+        return c;
+      },
+      get maxGroup() { return Math.max(1, ...Object.values(this.groupCounts)); },
+      statusClass(s) { return ({ pending: 'text-amber-400', running: 'text-brand-300', done: 'text-emerald-400', error: 'text-red-400' })[s] || ''; },
+      riskClass(level) {
+        return level === 'high' ? 'bg-red-500/15 text-red-300' :
+               level === 'medium' ? 'bg-amber-500/15 text-amber-300' :
+               'bg-emerald-500/15 text-emerald-300';
+      },
+      strengthClass(s) {
+        return s === 'strong' ? 'text-emerald-400' :
+               s === 'weak' ? 'text-amber-400' : 'text-slate-400';
+      },
+      downloadJson() {
+        const blob = new Blob([JSON.stringify({ job: this.job, sources: this.sources, report: this.report }, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `osint-${this.jobId}.json`;
+        a.click();
+      },
+      copyMarkdown() {
+        const r = this.report; if (!r) return;
+        const md = [
+          `# OSINT Raporu — ${this.job.target}`,
+          ``,
+          `## A. Yönetici Özeti`,
+          r.executive_summary.overview,
+          ``,
+          `**Risk:** ${r.executive_summary.risk_level} · **Güven:** ${(r.executive_summary.confidence*100).toFixed(0)}%`,
+          ``,
+          `### Top bulgular`,
+          ...r.executive_summary.top_findings.map(f => `- ${f}`),
+          ``,
+          `## I. Sonuç`,
+          r.conclusion,
+        ].join('\n');
+        navigator.clipboard.writeText(md);
+        alert('Markdown panoya kopyalandı.');
+      },
+    };
+  }
+</script>
+{% endblock %}

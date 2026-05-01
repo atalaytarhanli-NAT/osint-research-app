@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual envs
+venv/
+.venv/
+env/
+ENV/
+
+# Local DB
+*.sqlite
+*.sqlite3
+*.db
+data/
+
+# Secrets
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Build
+dist/
+build/
+*.egg
+
+# Logs
+*.log
+logs/
+
+# Claude Code local settings
+.claude/settings.local.json

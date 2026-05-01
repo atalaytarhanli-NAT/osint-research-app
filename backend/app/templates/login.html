@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Giriş — OSINT Research{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-md px-6 pt-20" x-data="loginForm()">
+  <a href="/" class="text-sm text-slate-400 hover:text-slate-200">← Anasayfa</a>
+  <h1 class="text-3xl font-bold mt-6">Giriş yap</h1>
+  <p class="text-sm text-slate-400 mt-1">Hesabın yoksa <a href="/register" class="text-brand-300 underline">kayıt ol</a>.</p>
+
+  <form @submit.prevent="submit" class="mt-8 space-y-4">
+    <div>
+      <label class="text-xs uppercase tracking-wider text-slate-400">E-posta</label>
+      <input
+        type="email" x-model="email" required autocomplete="email"
+        class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 outline-none focus:border-brand-400"
+      />
+    </div>
+    <div>
+      <label class="text-xs uppercase tracking-wider text-slate-400">Parola</label>
+      <input
+        type="password" x-model="password" required autocomplete="current-password"
+        class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 outline-none focus:border-brand-400"
+      />
+    </div>
+    <button
+      type="submit"
+      class="w-full rounded-lg bg-brand-500 hover:bg-brand-400 text-slate-950 font-semibold py-2.5"
+      :disabled="loading"
+    >
+      <span x-show="!loading">Giriş yap</span>
+      <span x-show="loading">…</span>
+    </button>
+    <p x-show="error" x-text="error" class="text-sm text-red-400"></p>
+  </form>
+</section>
+
+<script>
+  function loginForm() {
+    return {
+      email: '', password: '', loading: false, error: '',
+      async submit() {
+        this.loading = true; this.error = '';
+        try {
+          await window.app.api('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: this.email, password: this.password }) });
+          window.location.href = '/dashboard';
+        } catch (e) { this.error = e.message || 'Giriş başarısız'; }
+        finally { this.loading = false; }
+      }
+    };
+  }
+</script>
+{% endblock %}

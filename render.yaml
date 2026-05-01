@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: osint-research-app
+    runtime: python
+    region: frankfurt
+    plan: free
+    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt"
+    startCommand: "uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: APP_SECRET_KEY
+        generateValue: true
+      - key: APP_ENCRYPTION_KEY
+        generateValue: true
+      - key: APP_ENV
+        value: production
+      - key: ALLOW_REGISTRATION
+        value: "true"
+    healthCheckPath: /api/health
+    autoDeploy: true

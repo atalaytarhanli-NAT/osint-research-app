@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Geçmiş — OSINT Research{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-6xl px-6 pt-10 pb-16" x-data="historyView()">
+  <h1 class="text-3xl font-bold tracking-tight">Tüm araştırmalar</h1>
+  <p class="text-sm text-slate-400 mt-1">Sadece kendi geçmişinizi görüyorsunuz.</p>
+
+  <div class="mt-8 rounded-xl border border-white/5 overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-white/5 text-slate-300">
+        <tr><th class="text-left px-4 py-2">#</th><th class="text-left px-4 py-2">Hedef</th><th class="text-left px-4 py-2">Tür</th><th class="text-left px-4 py-2">Durum</th><th class="text-left px-4 py-2">LLM</th><th class="text-left px-4 py-2">Tarih</th><th></th></tr>
+      </thead>
+      <tbody>
+        <template x-for="j in jobs" :key="j.id">
+          <tr class="border-t border-white/5 hover:bg-white/[0.03]">
+            <td class="px-4 py-2 text-slate-400" x-text="j.id"></td>
+            <td class="px-4 py-2"><a :href="`/research/${j.id}`" class="text-brand-300 hover:underline" x-text="j.target"></a></td>
+            <td class="px-4 py-2 text-slate-400" x-text="j.kind"></td>
+            <td class="px-4 py-2" :class="statusClass(j.status)" x-text="j.status"></td>
+            <td class="px-4 py-2 text-slate-400" x-text="j.used_llm || '—'"></td>
+            <td class="px-4 py-2 text-slate-400" x-text="formatDate(j.created_at)"></td>
+            <td class="px-4 py-2 text-right"><button @click="del(j.id)" class="text-xs text-red-400/70 hover:text-red-400">Sil</button></td>
+          </tr>
+        </template>
+        <tr x-show="jobs.length === 0"><td colspan="7" class="px-4 py-6 text-slate-500 text-center">Hiç araştırma yok.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+  function historyView() {
+    return {
+      jobs: [],
+      async init() { await this.load(); },
+      async load() { this.jobs = await window.app.api('/api/research'); },
+      async del(id) {
+        if (!confirm('Bu raporu sil?')) return;
+        await window.app.api(`/api/research/${id}`, { method: 'DELETE' });
+        await this.load();
+      },
+      statusClass(s) { return ({ pending: 'text-amber-400', running: 'text-brand-300', done: 'text-emerald-400', error: 'text-red-400' })[s] || ''; },
+      formatDate(iso) { try { return new Date(iso).toLocaleString('tr-TR'); } catch { return iso; } },
+    };
+  }
+</script>
+{% endblock %}
