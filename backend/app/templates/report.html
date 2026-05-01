@@ -35,11 +35,31 @@
           <div class="space-y-4 min-w-0">
             <!-- A. Yönetici Özeti -->
             <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
-              <div class="text-[11px] uppercase tracking-widest text-brand-600 font-semibold">A · Özet</div>
-              <p class="mt-3 text-[15px] text-slate-800 leading-relaxed" x-text="report.executive_summary.overview"></p>
-              <ul class="mt-4 space-y-1.5 text-sm text-slate-700">
+              <div class="flex items-center justify-between gap-2">
+                <div class="text-[11px] uppercase tracking-widest text-brand-600 font-semibold">A · Özet</div>
+                <div class="text-[11px] text-slate-500"><span x-text="sources.length"></span> kaynak</div>
+              </div>
+              <p class="mt-3 text-[15px] text-slate-800 leading-relaxed" x-html="renderWithCitations(report.executive_summary.overview)"></p>
+              <ul class="mt-4 space-y-2 text-sm text-slate-700">
                 <template x-for="(f,i) in report.executive_summary.top_findings" :key="i">
-                  <li class="flex gap-2"><span class="text-brand-500 shrink-0">▸</span><span x-text="f"></span></li>
+                  <li class="flex gap-2 items-start">
+                    <span class="text-brand-500 shrink-0 mt-0.5">▸</span>
+                    <span class="flex-1 min-w-0">
+                      <span x-html="renderWithCitations(findingClaim(f))"></span>
+                      <template x-if="findingVerification(f)">
+                        <span class="ml-1.5 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                          :class="verifyClass(findingVerification(f))">
+                          <span x-text="verifyIcon(findingVerification(f))"></span>
+                          <span x-text="findingVerification(f)"></span>
+                        </span>
+                      </template>
+                      <template x-if="(f.source_indices || []).length">
+                        <span class="ml-1 text-[10px] text-slate-400">
+                          <template x-for="(idx,j) in f.source_indices" :key="j"><a :href="`#src-${idx}`" class="font-mono mx-0.5 px-1 rounded bg-slate-100 hover:bg-brand-100 hover:text-brand-700" x-text="`[${idx}]`"></a></template>
+                        </span>
+                      </template>
+                    </span>
+                  </li>
                 </template>
               </ul>
               <div class="mt-4 flex flex-wrap gap-2 text-xs">
@@ -50,6 +70,75 @@
                   Risk: <span class="font-mono font-semibold uppercase" x-text="report.executive_summary.risk_level"></span>
                 </div>
               </div>
+            </div>
+
+            <!-- Çapraz Doğrulama -->
+            <div x-show="(report.cross_verification || []).length" class="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
+              <div class="text-[11px] uppercase tracking-widest text-brand-600 font-semibold">Çapraz Doğrulama</div>
+              <p class="mt-1 text-[11px] text-slate-500">Her bulgunun kaç farklı bağımsız kaynak tarafından desteklendiği</p>
+              <ul class="mt-3 space-y-2">
+                <template x-for="(v,i) in report.cross_verification" :key="i">
+                  <li class="flex items-start gap-3">
+                    <span class="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded-lg"
+                      :class="verifyClass(v.level)">
+                      <span x-text="verifyIcon(v.level)"></span>
+                      <span x-text="v.level"></span>
+                    </span>
+                    <div class="flex-1 min-w-0">
+                      <div class="text-sm text-slate-800" x-text="v.claim"></div>
+                      <div class="mt-1 flex flex-wrap gap-1 text-[10px]">
+                        <template x-for="(idx,j) in v.source_indices" :key="j">
+                          <a :href="`#src-${idx}`" class="font-mono px-1.5 py-0.5 rounded bg-slate-100 hover:bg-brand-100 hover:text-brand-700 text-slate-500" x-text="`[${idx}]`"></a>
+                        </template>
+                      </div>
+                    </div>
+                  </li>
+                </template>
+              </ul>
+            </div>
+
+            <!-- Bulunan Kaynaklar (LLM şeffaflığı: tüm kaynaklar burada) -->
+            <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
+              <div class="flex flex-wrap items-center gap-2">
+                <div class="text-[11px] uppercase tracking-widest text-brand-600 font-semibold">Bulunan Kaynaklar</div>
+                <span class="text-xs text-slate-500" x-text="`${sources.length} sonuç`"></span>
+                <div class="ml-auto flex flex-wrap gap-1.5">
+                  <button @click="kindFilter=''" :class="kindFilter==='' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'" class="text-[11px] px-2 py-0.5 rounded-full">Tümü <span x-text="sources.length"></span></button>
+                  <template x-for="(c,k) in groupCounts" :key="k">
+                    <button @click="kindFilter = (kindFilter===k ? '' : k)"
+                      :class="kindFilter===k ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                      class="text-[11px] px-2 py-0.5 rounded-full">
+                      <span x-text="k"></span> <span class="font-semibold" x-text="c"></span>
+                    </button>
+                  </template>
+                </div>
+              </div>
+
+              <div class="mt-3 grid sm:grid-cols-2 gap-2">
+                <template x-for="(s,i) in visibleSources" :key="i">
+                  <a :href="s.url" target="_blank" rel="noopener"
+                    :id="`src-${s._idx}`"
+                    class="group rounded-xl ring-1 ring-slate-200 hover:ring-brand-300 hover:shadow-sm bg-slate-50 p-3 transition">
+                    <div class="flex items-center gap-2 text-[10px]">
+                      <span class="font-mono text-slate-400">#<span x-text="s._idx"></span></span>
+                      <span class="px-1.5 py-0.5 rounded bg-white ring-1 ring-slate-200 text-slate-600 uppercase tracking-wider" x-text="s.source"></span>
+                      <span x-show="s.published_at" class="text-slate-400 ml-auto" x-text="s.published_at"></span>
+                    </div>
+                    <div class="mt-1.5 text-sm font-medium text-slate-800 group-hover:text-brand-700 line-clamp-2" x-text="s.title || s.url"></div>
+                    <div x-show="s.snippet" class="mt-1 text-xs text-slate-500 line-clamp-2" x-text="s.snippet"></div>
+                    <div class="mt-1 text-[10px] font-mono text-slate-400 truncate" x-text="s.url"></div>
+                  </a>
+                </template>
+                <div x-show="visibleSources.length === 0" class="col-span-full text-center text-sm text-slate-400 py-6">
+                  Bu filtrede sonuç yok
+                </div>
+              </div>
+
+              <button x-show="!showAllSources && filteredSources.length > 12"
+                @click="showAllSources = true"
+                class="mt-3 w-full text-sm rounded-lg bg-slate-50 hover:bg-slate-100 ring-1 ring-slate-200 text-slate-700 py-2">
+                Tümünü göster (<span x-text="filteredSources.length - 12"></span> daha)
+              </button>
             </div>
 
             <!-- B. Kim/Ne -->
@@ -233,11 +322,15 @@
   function reportView(jobId) {
     return {
       jobId, job: null, report: null, sources: [], imgUrl: '',
+      kindFilter: '', showAllSources: false,
       timer: null,
       async fetch() {
         try {
           this.job = await window.app.api(`/api/research/${this.jobId}`);
-          if (this.job.result) { this.report = this.job.result.report; this.sources = this.job.result.sources || []; }
+          if (this.job.result) {
+            this.report = this.job.result.report;
+            this.sources = (this.job.result.sources || []).map((s, i) => ({...s, _idx: i}));
+          }
         } catch (e) {}
       },
       async poll() {
@@ -252,6 +345,36 @@
         return c;
       },
       get maxGroup() { return Math.max(1, ...Object.values(this.groupCounts)); },
+      get filteredSources() {
+        return this.kindFilter ? this.sources.filter(s => s.kind === this.kindFilter) : this.sources;
+      },
+      get visibleSources() {
+        return this.showAllSources ? this.filteredSources : this.filteredSources.slice(0, 12);
+      },
+      renderWithCitations(text) {
+        if (!text) return '';
+        const escaped = String(text)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return escaped.replace(/\[(\d+)\]/g, (m, n) => {
+          const idx = parseInt(n, 10);
+          if (idx < 0 || idx >= this.sources.length) return m;
+          return `<a href="#src-${idx}" class="inline-flex items-center px-1 rounded bg-brand-50 text-brand-700 text-[11px] font-mono no-underline hover:bg-brand-100">[${idx}]</a>`;
+        });
+      },
+      findingClaim(f)        { return typeof f === 'string' ? f : (f && f.claim) || ''; },
+      findingVerification(f) { return typeof f === 'object' && f ? (f.verification || '') : ''; },
+      verifyClass(level) {
+        return ({
+          triple:      'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
+          double:      'bg-brand-50 text-brand-700 ring-1 ring-brand-200',
+          single:      'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
+          conflicting: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
+          unverified:  'bg-slate-100 text-slate-500 ring-1 ring-slate-200',
+        })[level] || 'bg-slate-100 text-slate-500';
+      },
+      verifyIcon(level) {
+        return ({ triple: '✓✓✓', double: '✓✓', single: '✓', conflicting: '⚠', unverified: '•' })[level] || '';
+      },
       statusClass(s) { return ({ pending: 'text-amber-600', running: 'text-brand-600', done: 'text-emerald-600', error: 'text-rose-600' })[s] || ''; },
       riskClass(level) {
         return level === 'high' ? 'bg-rose-50 ring-1 ring-rose-200 text-rose-700' :
@@ -271,11 +394,17 @@
       },
       copyMarkdown() {
         const r = this.report; if (!r) return;
+        const findingLine = f => {
+          const claim = this.findingClaim(f);
+          const v = this.findingVerification(f);
+          const idx = (typeof f === 'object' && f && f.source_indices) ? ` ${f.source_indices.map(i=>`[${i}]`).join('')}` : '';
+          return `- ${claim}${v ? ` (${v})` : ''}${idx}`;
+        };
         const md = [
           `# ${this.job.target}`, ``,
           `**Risk:** ${r.executive_summary.risk_level} · **Güven:** ${(r.executive_summary.confidence*100).toFixed(0)}%`, ``,
           r.executive_summary.overview, ``,
-          ...r.executive_summary.top_findings.map(f => `- ${f}`), ``,
+          ...r.executive_summary.top_findings.map(findingLine), ``,
           `## Sonuç`, r.conclusion,
         ].join('\n');
         navigator.clipboard.writeText(md);

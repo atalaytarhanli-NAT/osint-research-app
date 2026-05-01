@@ -22,20 +22,26 @@ log = logging.getLogger("analyzer")
 
 SYSTEM_PROMPT = """Sen bir OSINT analistisin. Sana hedef konu hakkında açık kaynaklardan derlenmiş ham veri verilecek. Aşağıdaki kesin JSON şemasında Türkçe rapor üreteceksin. Şu kurallara uyacaksın:
 
-- Yalnızca verilen kaynaklara dayan; uydurma yapma
-- Doğrulanmış / iddia / söylenti / yorum ayrımına dikkat et
-- Her bulguya kaynak indeksi (sources listesindeki sıra numarası) ver
-- Belirsizse "uncertain": true belirt
-- Çıktı YALNIZCA geçerli JSON, ek açıklama YAZMA
+- Yalnızca verilen kaynaklara dayan; uydurma yapma.
+- ÇAPRAZ DOĞRULAMA ZORUNLU: Bir iddiayı raporda kullanmadan önce kaç bağımsız kaynak (farklı domain/source) tarafından desteklendiğini say. 1 kaynak → "single" (iddia), 2 farklı kaynak → "double" (doğrulanmış), 3+ farklı kaynak → "triple" (kuvvetli doğrulanmış). Çelişen kaynaklar varsa "conflicting".
+- Her bulguya `source_indices` (kaynak listesindeki sıra numaraları) zorunlu olarak ver.
+- Doğrulanmış / iddia / söylenti / yorum ayrımına dikkat et.
+- Belirsizse cümlede "(iddia)" veya "(doğrulanmamış)" parantezi koy.
+- Çıktı YALNIZCA geçerli JSON, ek açıklama YAZMA.
 
 JSON şeması:
 {
   "executive_summary": {
-    "overview": "konu kısa özeti (max 4 cümle)",
-    "top_findings": ["bulgu 1", "bulgu 2", "bulgu 3", "bulgu 4", "bulgu 5"],
+    "overview": "konu kısa özeti (max 4 cümle, [N] indeksli atıflar kullan)",
+    "top_findings": [
+      {"claim": "bulgu cümlesi", "source_indices": [0,3,7], "verification": "triple|double|single|conflicting"}
+    ],
     "confidence": 0.0-1.0,
     "risk_level": "low|medium|high"
   },
+  "cross_verification": [
+    {"claim": "iddia/bulgu", "level": "triple|double|single|conflicting", "source_indices": [0,3,7], "source_kinds": ["wiki","news","code"]}
+  ],
   "identity": {
     "definition": "kim/ne tanımı",
     "context": "coğrafi/sektörel/kurumsal bağlam",
@@ -156,6 +162,64 @@ def _classify_groups(sources: list[dict]) -> dict[str, list[int]]:
     return dict(groups)
 
 
+def _domain_of(url: str) -> str:
+    try:
+        from urllib.parse import urlparse
+
+        host = urlparse(url).netloc.lower()
+        return host[4:] if host.startswith("www.") else host
+    except Exception:
+        return ""
+
+
+def _verification_level(distinct_count: int) -> str:
+    if distinct_count >= 3:
+        return "triple"
+    if distinct_count == 2:
+        return "double"
+    if distinct_count == 1:
+        return "single"
+    return "unverified"
+
+
+def _build_cross_verification(sources: list[dict], groups: dict[str, list[int]]) -> list[dict]:
+    """For each source kind, build a 'claim' with verification level based on
+    how many distinct domains within that kind mention the target."""
+    cv: list[dict] = []
+    for kind, idxs in groups.items():
+        if not idxs:
+            continue
+        domains = {_domain_of(sources[i].get("url", "")) for i in idxs}
+        domains.discard("")
+        level = _verification_level(len(domains))
+        sample = idxs[:6]
+        if kind == "profile":
+            claim = f"Sosyal medya / profil platformlarında varlık ({len(idxs)} kayıt, {len(domains)} farklı platform)"
+        elif kind == "news":
+            claim = f"Haber kaynaklarında bahsi geçiyor ({len(idxs)} kayıt, {len(domains)} farklı yayın)"
+        elif kind == "wiki":
+            claim = f"Wikipedia/ansiklopedik kaynak referansı ({len(idxs)} kayıt)"
+        elif kind == "archive":
+            claim = f"Web arşivinde geçmişi var ({len(idxs)} snapshot)"
+        elif kind == "code":
+            claim = f"Açık kaynak kod tabanlarında referans ({len(idxs)} repo)"
+        elif kind == "social":
+            claim = f"Sosyal medyada tartışma izleri ({len(idxs)} kayıt, {len(domains)} platform)"
+        else:
+            claim = f"Web aramada görünür ({len(idxs)} kayıt, {len(domains)} farklı domain)"
+        cv.append(
+            {
+                "claim": claim,
+                "level": level,
+                "source_indices": sample,
+                "source_kinds": [kind],
+                "distinct_sources": len(domains),
+            }
+        )
+    cv.sort(key=lambda x: ({"triple": 0, "double": 1, "single": 2, "unverified": 3}[x["level"]], -x["distinct_sources"]))
+    return cv
+
+
 def _build_timeline(sources: list[dict]) -> list[dict]:
     timeline: list[dict] = []
     for i, s in enumerate(sources):
@@ -219,18 +283,35 @@ def _rule_based_report(target: str, kind: str, sources: list[dict]) -> dict[str,
         risk_score += 0.3
     risk_level = _risk_level(min(risk_score, 1.0))
 
-    top_findings: list[str] = []
+    cross_verification = _build_cross_verification(sources, groups)
+
+    top_findings: list[dict] = []
     for key in ["wiki", "news", "web", "profile", "code", "archive"]:
         idxs = groups.get(key, [])
         if not idxs:
             continue
+        domains = {_domain_of(sources[i].get("url", "")) for i in idxs}
+        domains.discard("")
+        level = _verification_level(len(domains))
         s = sources[idxs[0]]
-        top_findings.append(f"[{idxs[0]}] {key}: {s.get('title') or s.get('url')}")
+        top_findings.append(
+            {
+                "claim": f"{key}: {s.get('title') or s.get('url')}",
+                "source_indices": idxs[:4],
+                "verification": level,
+            }
+        )
         if len(top_findings) >= 5:
             break
     while len(top_findings) < 5 and len(top_findings) < n:
         i = len(top_findings)
-        top_findings.append(f"[{i}] {sources[i].get('title') or sources[i].get('url')}")
+        top_findings.append(
+            {
+                "claim": sources[i].get("title") or sources[i].get("url"),
+                "source_indices": [i],
+                "verification": "single",
+            }
+        )
 
     return {
         "executive_summary": {
@@ -243,6 +324,7 @@ def _rule_based_report(target: str, kind: str, sources: list[dict]) -> dict[str,
             "confidence": confidence,
             "risk_level": risk_level,
         },
+        "cross_verification": cross_verification,
         "identity": {
             "definition": (
                 f"Hedef '{target}' (tür ipucu: {kind}). "
