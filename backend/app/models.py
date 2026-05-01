@@ -56,6 +56,7 @@ class ResearchJob(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     target: Mapped[str] = mapped_column(String(500))
     kind: Mapped[str] = mapped_column(String(40))  # auto/person/organization/url/keyword/social
+    intensity: Mapped[str] = mapped_column(String(10), default="deep")  # quick | deep
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending/running/done/error
     result_json: Mapped[Optional[str]] = mapped_column(Text)
     error: Mapped[Optional[str]] = mapped_column(Text)

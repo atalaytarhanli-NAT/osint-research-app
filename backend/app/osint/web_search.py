@@ -22,7 +22,7 @@ USER_AGENT = (
 )
 
 
-async def search_web(query: str, max_results: int = 12) -> list[SourceResult]:
+async def search_web(query: str, max_results: int = 18) -> list[SourceResult]:
     params = {"q": query, "kl": "wt-wt"}
     headers = {"User-Agent": USER_AGENT, "Accept-Language": "en-US,en;q=0.9"}
 
@@ -70,9 +70,14 @@ async def search_web(query: str, max_results: int = 12) -> list[SourceResult]:
     return results
 
 
-async def search_news(query: str, max_results: int = 8) -> list[SourceResult]:
+async def search_news(query: str, max_results: int = 12) -> list[SourceResult]:
     """News-flavored search by appending site filters."""
-    news_query = f'{query} (site:reuters.com OR site:apnews.com OR site:bbc.com OR site:nytimes.com OR site:hurriyetdailynews.com OR site:dailysabah.com)'
+    news_query = (
+        f'{query} (site:reuters.com OR site:apnews.com OR site:bbc.com OR site:nytimes.com '
+        f'OR site:bloomberg.com OR site:wsj.com OR site:ft.com OR site:guardian.co.uk '
+        f'OR site:hurriyetdailynews.com OR site:dailysabah.com OR site:trtworld.com '
+        f'OR site:aljazeera.com OR site:dw.com OR site:lemonde.fr)'
+    )
     items = await search_web(news_query, max_results=max_results)
     for item in items:
         item.source = "news"

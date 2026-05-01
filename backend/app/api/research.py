@@ -28,6 +28,7 @@ router = APIRouter(prefix="/api/research", tags=["research"])
 class StartIn(BaseModel):
     target: str = Field(min_length=2, max_length=500)
     kind: str = Field(default="auto")  # auto/person/organization/url/keyword/social
+    intensity: str = Field(default="deep")  # quick | deep (2-pass)
     provider: Optional[str] = None
     model: Optional[str] = None
     options: dict = Field(default_factory=dict)
@@ -110,7 +111,7 @@ def _run_job(job_id: int) -> None:
 
         provider_id, key, model = _select_provider(job.user_id, job.used_llm, db)
         try:
-            sources = asyncio.run(run_pipeline(job.target, job.kind))
+            sources = asyncio.run(run_pipeline(job.target, job.kind, intensity=job.intensity or "deep"))
             report = asyncio.run(
                 build_report(
                     target=job.target,
@@ -150,6 +151,7 @@ def start_research(
         user_id=user.id,
         target=data.target.strip(),
         kind=data.kind,
+        intensity=data.intensity if data.intensity in ("quick", "deep") else "deep",
         status="pending",
         used_llm=data.provider,
     )

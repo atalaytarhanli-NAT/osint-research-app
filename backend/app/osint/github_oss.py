@@ -12,7 +12,7 @@ from .base import SourceResult, safe_truncate
 log = logging.getLogger("osint.github")
 
 
-async def search_github(query: str, max_users: int = 5, max_repos: int = 5) -> list[SourceResult]:
+async def search_github(query: str, max_users: int = 8, max_repos: int = 12) -> list[SourceResult]:
     out: list[SourceResult] = []
     headers = {"Accept": "application/vnd.github+json", "User-Agent": "OsintResearchApp/1.0"}
     try:

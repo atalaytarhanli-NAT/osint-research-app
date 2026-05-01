@@ -13,7 +13,7 @@ from .base import SourceResult, safe_truncate
 log = logging.getLogger("osint.hn")
 
 
-async def search_hn(query: str, hits: int = 8) -> list[SourceResult]:
+async def search_hn(query: str, hits: int = 15) -> list[SourceResult]:
     url = "https://hn.algolia.com/api/v1/search"
     params = {"query": query, "hitsPerPage": hits, "tags": "(story,comment)"}
     results: list[SourceResult] = []

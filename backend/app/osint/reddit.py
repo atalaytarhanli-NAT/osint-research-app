@@ -15,7 +15,7 @@ log = logging.getLogger("osint.reddit")
 UA = "OsintResearchApp/1.0 (by /u/atalay-osint)"
 
 
-async def search_reddit(query: str, limit: int = 10) -> list[SourceResult]:
+async def search_reddit(query: str, limit: int = 18) -> list[SourceResult]:
     url = "https://www.reddit.com/search.json"
     params = {"q": query, "limit": limit, "sort": "relevance", "t": "all"}
     headers = {"User-Agent": UA}
