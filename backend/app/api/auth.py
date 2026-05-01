@@ -40,6 +40,7 @@ class UserOut(BaseModel):
     email: EmailStr
     display_name: str | None
     is_admin: bool
+    is_active: bool = True
 
 
 def _set_cookie(response: Response, token: str) -> None:
@@ -54,9 +55,22 @@ def _set_cookie(response: Response, token: str) -> None:
     )
 
 
+def _registration_open(db: Session) -> bool:
+    from ..models import SystemSetting
+
+    row = db.get(SystemSetting, "registration_open")
+    if row is not None:
+        return row.value == "1"
+    return get_settings().allow_registration
+
+
 @router.post("/register", response_model=TokenOut)
 def register(data: RegisterIn, response: Response, db: Session = Depends(get_db)):
-    if not get_settings().allow_registration:
+    user_count = db.scalar(select(User.id).limit(1))
+    is_first_user = user_count is None
+
+    # First user always allowed (bootstraps admin); afterwards respect setting.
+    if not is_first_user and not _registration_open(db):
         raise HTTPException(status_code=403, detail="Registration disabled")
 
     existing = db.scalar(select(User).where(User.email == data.email))
@@ -67,6 +81,8 @@ def register(data: RegisterIn, response: Response, db: Session = Depends(get_db)
         email=data.email,
         password_hash=hash_password(data.password),
         display_name=data.display_name or data.email.split("@")[0],
+        is_admin=is_first_user,
+        is_active=True,
     )
     db.add(user)
     db.commit()
@@ -82,6 +98,8 @@ def login(data: LoginIn, response: Response, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.email == data.email))
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account disabled")
 
     token = create_access_token(user.id)
     _set_cookie(response, token)
@@ -96,5 +114,9 @@ def logout(response: Response):
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):
     return UserOut(
-        id=user.id, email=user.email, display_name=user.display_name, is_admin=user.is_admin
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        is_admin=user.is_admin,
+        is_active=user.is_active,
     )

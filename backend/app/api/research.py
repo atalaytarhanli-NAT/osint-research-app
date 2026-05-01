@@ -16,7 +16,7 @@ from ..crypto import decrypt
 from ..database import SessionLocal, get_db
 from ..llm.analyzer import build_report
 from ..llm.providers import PROVIDERS
-from ..models import ApiKey, ResearchJob, User
+from ..models import ApiKey, ResearchJob, SystemApiKey, User
 from ..osint.pipeline import run_pipeline
 
 
@@ -63,21 +63,39 @@ def _serialize(job: ResearchJob) -> JobDetailOut:
 
 
 def _select_provider(user_id: int, requested: Optional[str], db: Session):
-    """Return (provider_id, key, model) or (None, None, None) for rule-based fallback."""
-    keys = {
+    """Return (provider_id, key, model) or (None, None, None) for rule-based fallback.
+
+    Order: user's requested → user's keys (in preference order) → system-wide
+    admin-set keys (preference order). All preference order: open-source/free first.
+    """
+    user_keys = {
         k.provider: (decrypt(k.encrypted_value), k.model)
         for k in db.scalars(select(ApiKey).where(ApiKey.user_id == user_id)).all()
     }
-    if requested and requested in keys and keys[requested][0]:
-        plain, model = keys[requested]
-        return requested, plain, model
+    sys_keys_rows = db.scalars(
+        select(SystemApiKey).where(SystemApiKey.enabled == True)  # noqa
+    ).all()
+    sys_keys = {r.provider: (decrypt(r.encrypted_value), r.model) for r in sys_keys_rows}
 
-    # Otherwise, try in order of preference: open-source / free first
+    def pick(provider: str):
+        if provider in user_keys and user_keys[provider][0]:
+            p, m = user_keys[provider]
+            return provider, p, m
+        if provider in sys_keys and sys_keys[provider][0]:
+            p, m = sys_keys[provider]
+            return provider, p, m
+        return None
+
+    if requested:
+        result = pick(requested)
+        if result:
+            return result
+
     preference = ["groq", "huggingface", "openrouter", "google", "anthropic", "openai"]
     for pid in preference:
-        if pid in keys and keys[pid][0]:
-            plain, model = keys[pid]
-            return pid, plain, model
+        result = pick(pid)
+        if result:
+            return result
     return None, None, None
 
 

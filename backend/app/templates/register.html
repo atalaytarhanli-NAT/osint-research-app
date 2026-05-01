@@ -1,33 +1,33 @@
 {% extends "base.html" %}
-{% block title %}Kayıt — OSINT Research{% endblock %}
+{% block title %}Kayıt{% endblock %}
 {% block content %}
-<section class="mx-auto max-w-md px-6 pt-20" x-data="registerForm()">
-  <a href="/" class="text-sm text-slate-400 hover:text-slate-200">← Anasayfa</a>
-  <h1 class="text-3xl font-bold mt-6">Yeni hesap</h1>
+<section class="mx-auto max-w-sm px-5 pt-16 pb-12" x-data="registerForm()">
+  <a href="/" class="text-xs text-slate-500 hover:text-slate-700">← Ana</a>
+  <h1 class="text-2xl font-bold mt-5">Yeni hesap</h1>
+
   {% if not registration_open %}
-    <p class="mt-4 text-amber-400">Kayıtlar şu anda kapalı.</p>
+    <p class="mt-4 text-amber-600 text-sm">Kayıtlar şu anda kapalı.</p>
   {% else %}
-  <p class="text-sm text-slate-400 mt-1">Hesabın varsa <a href="/login" class="text-brand-300 underline">giriş yap</a>.</p>
-  <form @submit.prevent="submit" class="mt-8 space-y-4">
-    <div>
-      <label class="text-xs uppercase tracking-wider text-slate-400">E-posta</label>
-      <input type="email" x-model="email" required class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 outline-none focus:border-brand-400" />
-    </div>
-    <div>
-      <label class="text-xs uppercase tracking-wider text-slate-400">Görünür ad (opsiyonel)</label>
-      <input type="text" x-model="display_name" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 outline-none focus:border-brand-400" />
-    </div>
-    <div>
-      <label class="text-xs uppercase tracking-wider text-slate-400">Parola (en az 8 karakter)</label>
-      <input type="password" x-model="password" required minlength="8" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 outline-none focus:border-brand-400" />
-    </div>
-    <button type="submit" :disabled="loading" class="w-full rounded-lg bg-brand-500 hover:bg-brand-400 text-slate-950 font-semibold py-2.5">
-      <span x-show="!loading">Hesap oluştur</span><span x-show="loading">…</span>
+  <form @submit.prevent="submit" class="mt-6 space-y-3">
+    <input type="email" x-model="email" required placeholder="E-posta"
+      class="w-full rounded-xl bg-white ring-1 ring-slate-200 focus:ring-brand-400 focus:ring-2 px-4 py-3 outline-none" />
+    <input type="text" x-model="display_name" placeholder="İsim (opsiyonel)"
+      class="w-full rounded-xl bg-white ring-1 ring-slate-200 focus:ring-brand-400 focus:ring-2 px-4 py-3 outline-none" />
+    <input type="password" x-model="password" required minlength="8" placeholder="Parola (min 8)"
+      class="w-full rounded-xl bg-white ring-1 ring-slate-200 focus:ring-brand-400 focus:ring-2 px-4 py-3 outline-none" />
+    <button type="submit" :disabled="loading"
+      class="w-full rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-medium py-3">
+      <span x-show="!loading">Hesap aç</span><span x-show="loading">…</span>
     </button>
-    <p x-show="error" x-text="error" class="text-sm text-red-400"></p>
+    <p x-show="error" x-text="error" class="text-sm text-rose-600"></p>
   </form>
+
+  <div class="mt-6 text-center text-sm text-slate-500">
+    Hesabın var mı? <a href="/login" class="text-brand-600 hover:underline">Giriş</a>
+  </div>
   {% endif %}
 </section>
+
 <script>
   function registerForm() {
     return {

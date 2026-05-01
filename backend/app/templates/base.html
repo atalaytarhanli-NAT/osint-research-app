@@ -1,8 +1,9 @@
 <!doctype html>
-<html lang="tr" class="bg-slate-950 text-slate-100">
+<html lang="tr" class="bg-white text-slate-900">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#ffffff" />
   <title>{% block title %}OSINT Research{% endblock %}</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
@@ -21,16 +22,9 @@
           },
           colors: {
             brand: {
-              50:  '#eef9ff',
-              100: '#d8efff',
-              200: '#b9e3ff',
-              300: '#88d2ff',
-              400: '#52b8ff',
-              500: '#2698ff',
-              600: '#0e78ed',
-              700: '#0c61c0',
-              800: '#0f5198',
-              900: '#11447a',
+              50:  '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc',
+              400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca',
+              800: '#3730a3', 900: '#312e81',
             },
           },
         },
@@ -38,21 +32,17 @@
     };
   </script>
 </head>
-<body class="font-sans min-h-screen flex flex-col antialiased selection:bg-brand-500/30">
+<body class="font-sans min-h-screen flex flex-col antialiased selection:bg-brand-500/20 bg-slate-50">
   <div
-    class="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(60%_60%_at_50%_0%,rgba(38,152,255,0.18),transparent_60%),radial-gradient(40%_40%_at_100%_100%,rgba(132,38,255,0.12),transparent_55%)]"
+    class="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(60%_50%_at_50%_-10%,rgba(99,102,241,0.10),transparent_60%),radial-gradient(40%_40%_at_100%_100%,rgba(217,70,239,0.06),transparent_55%)]"
   ></div>
-  {% block nav %}
-    {% if user %}
-      {% include "_nav.html" %}
-    {% endif %}
-  {% endblock %}
+
+  {% block nav %}{% if user %}{% include "_nav.html" %}{% endif %}{% endblock %}
 
   <main class="flex-1">{% block content %}{% endblock %}</main>
 
-  <footer class="mt-12 border-t border-white/5 py-6 text-center text-xs text-slate-500">
-    OSINT Research App · yalnızca açık kaynak verileriyle çalışır · KVKK/GDPR uyumu kullanıcının
-    sorumluluğundadır
+  <footer class="mt-12 py-6 text-center text-[11px] text-slate-400">
+    Yalnızca açık kaynak verilerle çalışır
   </footer>
 
   <script src="/static/js/app.js"></script>

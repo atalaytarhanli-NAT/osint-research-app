@@ -1,28 +1,43 @@
 {% extends "base.html" %}
-{% block title %}Geçmiş — OSINT Research{% endblock %}
+{% block title %}Geçmiş{% endblock %}
 {% block content %}
-<section class="mx-auto max-w-6xl px-6 pt-10 pb-16" x-data="historyView()">
-  <h1 class="text-3xl font-bold tracking-tight">Tüm araştırmalar</h1>
-  <p class="text-sm text-slate-400 mt-1">Sadece kendi geçmişinizi görüyorsunuz.</p>
+<section class="mx-auto max-w-5xl px-4 sm:px-6 pt-8 sm:pt-12 pb-16" x-data="historyView()">
+  <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">Geçmiş</h1>
 
-  <div class="mt-8 rounded-xl border border-white/5 overflow-hidden">
+  <!-- Mobile cards -->
+  <div class="md:hidden mt-6 space-y-2">
+    <template x-for="j in jobs" :key="j.id">
+      <a :href="`/research/${j.id}`" class="block rounded-xl bg-white ring-1 ring-slate-200 p-4">
+        <div class="flex items-center gap-2 text-[11px]">
+          <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase tracking-wider" x-text="j.kind"></span>
+          <span :class="statusClass(j.status)" class="font-medium uppercase" x-text="j.status"></span>
+          <span class="ml-auto text-slate-400" x-text="formatDate(j.created_at)"></span>
+        </div>
+        <div class="font-medium mt-1.5 truncate" x-text="j.target"></div>
+      </a>
+    </template>
+    <div x-show="jobs.length === 0" class="text-center text-sm text-slate-400 py-12">Boş</div>
+  </div>
+
+  <!-- Desktop table -->
+  <div class="hidden md:block mt-6 rounded-2xl bg-white ring-1 ring-slate-200 overflow-hidden">
     <table class="w-full text-sm">
-      <thead class="bg-white/5 text-slate-300">
-        <tr><th class="text-left px-4 py-2">#</th><th class="text-left px-4 py-2">Hedef</th><th class="text-left px-4 py-2">Tür</th><th class="text-left px-4 py-2">Durum</th><th class="text-left px-4 py-2">LLM</th><th class="text-left px-4 py-2">Tarih</th><th></th></tr>
+      <thead class="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wider">
+        <tr><th class="text-left px-4 py-3">#</th><th class="text-left px-4 py-3">Hedef</th><th class="text-left px-4 py-3">Tür</th><th class="text-left px-4 py-3">Durum</th><th class="text-left px-4 py-3">LLM</th><th class="text-left px-4 py-3">Tarih</th><th></th></tr>
       </thead>
       <tbody>
         <template x-for="j in jobs" :key="j.id">
-          <tr class="border-t border-white/5 hover:bg-white/[0.03]">
-            <td class="px-4 py-2 text-slate-400" x-text="j.id"></td>
-            <td class="px-4 py-2"><a :href="`/research/${j.id}`" class="text-brand-300 hover:underline" x-text="j.target"></a></td>
-            <td class="px-4 py-2 text-slate-400" x-text="j.kind"></td>
-            <td class="px-4 py-2" :class="statusClass(j.status)" x-text="j.status"></td>
-            <td class="px-4 py-2 text-slate-400" x-text="j.used_llm || '—'"></td>
-            <td class="px-4 py-2 text-slate-400" x-text="formatDate(j.created_at)"></td>
-            <td class="px-4 py-2 text-right"><button @click="del(j.id)" class="text-xs text-red-400/70 hover:text-red-400">Sil</button></td>
+          <tr class="border-t border-slate-100 hover:bg-slate-50/60">
+            <td class="px-4 py-2.5 text-slate-400" x-text="j.id"></td>
+            <td class="px-4 py-2.5"><a :href="`/research/${j.id}`" class="text-brand-600 hover:underline" x-text="j.target"></a></td>
+            <td class="px-4 py-2.5 text-slate-500" x-text="j.kind"></td>
+            <td class="px-4 py-2.5" :class="statusClass(j.status)" x-text="j.status"></td>
+            <td class="px-4 py-2.5 text-slate-500 text-xs" x-text="j.used_llm || ''"></td>
+            <td class="px-4 py-2.5 text-slate-500 text-xs" x-text="formatDate(j.created_at)"></td>
+            <td class="px-4 py-2.5 text-right"><button @click="del(j.id)" class="text-xs text-rose-500/80 hover:text-rose-600">Sil</button></td>
           </tr>
         </template>
-        <tr x-show="jobs.length === 0"><td colspan="7" class="px-4 py-6 text-slate-500 text-center">Hiç araştırma yok.</td></tr>
+        <tr x-show="jobs.length === 0"><td colspan="7" class="px-4 py-10 text-slate-400 text-center text-sm">Boş</td></tr>
       </tbody>
     </table>
   </div>
@@ -35,12 +50,12 @@
       async init() { await this.load(); },
       async load() { this.jobs = await window.app.api('/api/research'); },
       async del(id) {
-        if (!confirm('Bu raporu sil?')) return;
+        if (!confirm('Sil?')) return;
         await window.app.api(`/api/research/${id}`, { method: 'DELETE' });
         await this.load();
       },
-      statusClass(s) { return ({ pending: 'text-amber-400', running: 'text-brand-300', done: 'text-emerald-400', error: 'text-red-400' })[s] || ''; },
-      formatDate(iso) { try { return new Date(iso).toLocaleString('tr-TR'); } catch { return iso; } },
+      statusClass(s) { return ({ pending: 'text-amber-600', running: 'text-brand-600', done: 'text-emerald-600', error: 'text-rose-600' })[s] || ''; },
+      formatDate(iso) { try { return new Date(iso).toLocaleDateString('tr-TR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'}); } catch { return ''; } },
     };
   }
 </script>

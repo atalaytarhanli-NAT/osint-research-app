@@ -21,6 +21,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[Optional[str]] = mapped_column(String(120))
     is_admin: Mapped[bool] = mapped_column(default=False)
+    is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     api_keys: Mapped[list["ApiKey"]] = relationship(
@@ -65,3 +66,30 @@ class ResearchJob(Base):
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(back_populates="jobs")
+
+
+class SystemApiKey(Base):
+    """System-wide LLM API key, set by admin. Used as fallback when a user has
+    no personal key for the requested provider."""
+
+    __tablename__ = "system_api_keys"
+
+    provider: Mapped[str] = mapped_column(String(40), primary_key=True)
+    encrypted_value: Mapped[str] = mapped_column(Text)
+    model: Mapped[Optional[str]] = mapped_column(String(120))
+    enabled: Mapped[bool] = mapped_column(default=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class SystemSetting(Base):
+    """Generic key/value system settings (e.g. registration_open)."""
+
+    __tablename__ = "system_settings"
+
+    key: Mapped[str] = mapped_column(String(60), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )

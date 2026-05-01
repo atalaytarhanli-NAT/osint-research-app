@@ -1,36 +1,25 @@
 {% extends "base.html" %}
-{% block title %}Giriş — OSINT Research{% endblock %}
+{% block title %}Giriş{% endblock %}
 {% block content %}
-<section class="mx-auto max-w-md px-6 pt-20" x-data="loginForm()">
-  <a href="/" class="text-sm text-slate-400 hover:text-slate-200">← Anasayfa</a>
-  <h1 class="text-3xl font-bold mt-6">Giriş yap</h1>
-  <p class="text-sm text-slate-400 mt-1">Hesabın yoksa <a href="/register" class="text-brand-300 underline">kayıt ol</a>.</p>
+<section class="mx-auto max-w-sm px-5 pt-16 pb-12" x-data="loginForm()">
+  <a href="/" class="text-xs text-slate-500 hover:text-slate-700">← Ana</a>
+  <h1 class="text-2xl font-bold mt-5">Giriş</h1>
 
-  <form @submit.prevent="submit" class="mt-8 space-y-4">
-    <div>
-      <label class="text-xs uppercase tracking-wider text-slate-400">E-posta</label>
-      <input
-        type="email" x-model="email" required autocomplete="email"
-        class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 outline-none focus:border-brand-400"
-      />
-    </div>
-    <div>
-      <label class="text-xs uppercase tracking-wider text-slate-400">Parola</label>
-      <input
-        type="password" x-model="password" required autocomplete="current-password"
-        class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 outline-none focus:border-brand-400"
-      />
-    </div>
-    <button
-      type="submit"
-      class="w-full rounded-lg bg-brand-500 hover:bg-brand-400 text-slate-950 font-semibold py-2.5"
-      :disabled="loading"
-    >
-      <span x-show="!loading">Giriş yap</span>
-      <span x-show="loading">…</span>
+  <form @submit.prevent="submit" class="mt-6 space-y-3">
+    <input type="email" x-model="email" required autocomplete="email" placeholder="E-posta"
+      class="w-full rounded-xl bg-white ring-1 ring-slate-200 focus:ring-brand-400 focus:ring-2 px-4 py-3 outline-none" />
+    <input type="password" x-model="password" required autocomplete="current-password" placeholder="Parola"
+      class="w-full rounded-xl bg-white ring-1 ring-slate-200 focus:ring-brand-400 focus:ring-2 px-4 py-3 outline-none" />
+    <button type="submit" :disabled="loading"
+      class="w-full rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-medium py-3">
+      <span x-show="!loading">Giriş</span><span x-show="loading">…</span>
     </button>
-    <p x-show="error" x-text="error" class="text-sm text-red-400"></p>
+    <p x-show="error" x-text="error" class="text-sm text-rose-600"></p>
   </form>
+
+  <div class="mt-6 text-center text-sm text-slate-500">
+    Hesabın yok mu? <a href="/register" class="text-brand-600 hover:underline">Kayıt ol</a>
+  </div>
 </section>
 
 <script>

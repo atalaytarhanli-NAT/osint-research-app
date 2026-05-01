@@ -1,42 +1,33 @@
 {% extends "base.html" %}
-{% block title %}OSINT Research — Açık kaynak istihbarat{% endblock %}
+{% block title %}OSINT Research{% endblock %}
 {% block content %}
-<section class="mx-auto max-w-6xl px-6 pt-20 pb-10">
-  <div class="text-xs uppercase tracking-widest text-brand-400 mb-3">OSINT · Açık Kaynak İstihbarat</div>
-  <h1 class="text-4xl md:text-6xl font-bold tracking-tight">
-    Bir kişi, kurum veya konu hakkında
-    <span class="bg-gradient-to-r from-brand-300 to-purple-400 bg-clip-text text-transparent">
-      yapılandırılmış istihbarat raporu
-    </span>
-    üretin.
+<section class="mx-auto max-w-5xl px-5 sm:px-6 pt-16 sm:pt-24 pb-12 text-center">
+  <div class="inline-flex items-center gap-2 text-[11px] font-medium uppercase tracking-widest text-brand-600 bg-brand-50 px-3 py-1 rounded-full">
+    Açık kaynak istihbarat
+  </div>
+  <h1 class="mt-5 text-[34px] sm:text-5xl md:text-6xl font-bold tracking-tight leading-[1.05]">
+    Bir isim ver,
+    <span class="bg-gradient-to-r from-brand-500 via-violet-500 to-fuchsia-500 bg-clip-text text-transparent">rapor al.</span>
   </h1>
-  <p class="mt-6 text-lg text-slate-300 max-w-2xl">
-    Açık web, haberler, Wikipedia, Wayback arşivi, sosyal profil izleri, GitHub, Reddit, Hacker News
-    — tek bir aramayla taranır, A–I formatlı yönetici raporu olarak çıkar.
+  <p class="mt-4 text-base sm:text-lg text-slate-600 max-w-xl mx-auto">
+    Açık webde derin tarama. A–I formatlı yapılandırılmış rapor.
   </p>
-  <div class="mt-8 flex flex-wrap gap-3">
-    <a href="/register" class="px-5 py-3 rounded-lg bg-brand-500 hover:bg-brand-400 text-slate-950 font-semibold">
-      Ücretsiz hesap oluştur
-    </a>
-    <a href="/login" class="px-5 py-3 rounded-lg border border-white/10 hover:border-white/30 text-slate-200">
-      Giriş yap
-    </a>
+  <div class="mt-7 flex flex-wrap justify-center gap-3">
+    <a href="/register" class="px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-medium shadow-sm">Hesap aç</a>
+    <a href="/login" class="px-5 py-3 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium">Giriş</a>
   </div>
 </section>
 
-<section class="mx-auto max-w-6xl px-6 py-16 grid md:grid-cols-3 gap-6">
+<section class="mx-auto max-w-5xl px-5 sm:px-6 pb-16 grid sm:grid-cols-3 gap-3 sm:gap-4">
   {% for f in [
-    {'t':'Anahtarsız çalışır','d':'DuckDuckGo, Wikipedia, Wayback, GitHub, Reddit, HN — hiçbir API anahtarı gerekmeden.'},
-    {'t':'Açık kaynak LLM desteği','d':'Groq, HuggingFace, OpenRouter ücretsiz tier. Settings ekranından kendi anahtarını ekle.'},
-    {'t':'A–I formatlı rapor','d':'Yönetici özeti, kim/ne, dijital iz, zaman çizelgesi, ilişki, içerik, risk, kaynak tablosu, sonuç.'},
-    {'t':'Çok kullanıcılı','d':'Hesap aç, kendi geçmişin, kendi anahtarların; her şey şifreli saklanır.'},
-    {'t':'Etik sınır','d':'Sızıntı verisi, kapalı sistem, ToS ihlali yok. Yalnızca kamuya açık veriler.'},
-    {'t':'Sherlock benzeri profil tarama','d':'20+ platformda kullanıcı adı varlık testi.'}
+    {'i':'⚡', 't':'Anahtarsız','d':'Anında çalışır'},
+    {'i':'🧭', 't':'8 kaynak','d':'Web · Wiki · Arşiv · Sosyal'},
+    {'i':'🧠', 't':'Açık LLM','d':'Llama · Qwen · DeepSeek'}
   ] %}
-  <div class="rounded-2xl border border-white/5 bg-white/[0.03] p-5 backdrop-blur">
-    <div class="text-brand-300 text-sm font-mono mb-2">// {{ loop.index }}</div>
-    <div class="text-base font-semibold mb-1">{{ f.t }}</div>
-    <div class="text-sm text-slate-400">{{ f.d }}</div>
+  <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-5 shadow-sm">
+    <div class="text-2xl mb-2">{{ f.i }}</div>
+    <div class="font-semibold">{{ f.t }}</div>
+    <div class="text-sm text-slate-500 mt-0.5">{{ f.d }}</div>
   </div>
   {% endfor %}
 </section>

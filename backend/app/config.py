@@ -33,6 +33,9 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     s = Settings()
+    # Render Postgres compatibility: rewrite legacy postgres:// scheme.
+    if s.database_url.startswith("postgres://"):
+        s.database_url = s.database_url.replace("postgres://", "postgresql://", 1)
     if not s.encryption_key:
         # Generate and persist a Fernet key on first run for local dev convenience.
         # In production, set APP_ENCRYPTION_KEY explicitly (Render render.yaml does this).

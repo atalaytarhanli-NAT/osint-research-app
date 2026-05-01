@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+{% block title %}Admin{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-6xl px-4 sm:px-6 pt-8 sm:pt-12 pb-16" x-data="adminView()" x-init="loadAll()">
+  <div class="flex items-center gap-3 flex-wrap">
+    <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">Admin</h1>
+    <span class="text-[11px] uppercase tracking-wider px-2 py-0.5 rounded bg-brand-50 text-brand-700">{{ user.email }}</span>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+    <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-4">
+      <div class="text-[11px] uppercase tracking-wider text-slate-500">Kullanıcı</div>
+      <div class="mt-1 text-2xl font-bold" x-text="config.user_count ?? '—'"></div>
+    </div>
+    <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-4">
+      <div class="text-[11px] uppercase tracking-wider text-slate-500">Admin</div>
+      <div class="mt-1 text-2xl font-bold" x-text="config.admin_count ?? '—'"></div>
+    </div>
+    <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-4">
+      <div class="text-[11px] uppercase tracking-wider text-slate-500">Araştırma</div>
+      <div class="mt-1 text-2xl font-bold" x-text="config.job_count ?? '—'"></div>
+    </div>
+    <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-4">
+      <div class="text-[11px] uppercase tracking-wider text-slate-500">Sistem LLM</div>
+      <div class="mt-1 text-2xl font-bold" x-text="(config.system_keys_enabled || []).length"></div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="mt-6 flex gap-1 border-b border-slate-200 overflow-x-auto">
+    <template x-for="t in tabs" :key="t.id">
+      <button @click="active = t.id"
+        :class="active === t.id ? 'border-brand-500 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700'"
+        class="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap"
+        x-text="t.label"></button>
+    </template>
+  </div>
+
+  <!-- ===== Users tab ===== -->
+  <div x-show="active === 'users'" class="mt-6 space-y-3">
+    <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
+      <div class="text-sm font-semibold mb-3">Yeni kullanıcı oluştur</div>
+      <div class="grid sm:grid-cols-[1fr_1fr_auto_auto] gap-2">
+        <input type="email" x-model="newUser.email" placeholder="E-posta"
+          class="rounded-lg bg-slate-50 ring-1 ring-slate-200 focus:ring-brand-400 focus:ring-2 px-3 py-2 text-sm outline-none" />
+        <input type="password" x-model="newUser.password" placeholder="Parola (min 8)"
+          class="rounded-lg bg-slate-50 ring-1 ring-slate-200 focus:ring-brand-400 focus:ring-2 px-3 py-2 text-sm outline-none" />
+        <label class="flex items-center gap-2 text-sm text-slate-600 px-2">
+          <input type="checkbox" x-model="newUser.is_admin" class="size-4" /> Admin
+        </label>
+        <button @click="createUser()" class="rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm px-4 py-2">Oluştur</button>
+      </div>
+    </div>
+
+    <!-- Mobile cards -->
+    <div class="md:hidden space-y-2">
+      <template x-for="u in users" :key="u.id">
+        <div class="rounded-xl bg-white ring-1 ring-slate-200 p-4">
+          <div class="flex items-start gap-2">
+            <div class="min-w-0 flex-1">
+              <div class="font-medium truncate" x-text="u.display_name || u.email"></div>
+              <div class="text-xs text-slate-500 truncate" x-text="u.email"></div>
+              <div class="mt-1 flex flex-wrap gap-1.5 text-[10px]">
+                <span x-show="u.is_admin" class="px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 uppercase">admin</span>
+                <span :class="u.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'" class="px-1.5 py-0.5 rounded uppercase" x-text="u.is_active ? 'aktif' : 'pasif'"></span>
+                <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600" x-text="u.job_count + ' arş'"></span>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-1.5 text-xs">
+            <button @click="toggleAdmin(u)" class="px-2.5 py-1 rounded ring-1 ring-slate-200 hover:bg-slate-50" x-text="u.is_admin ? 'Admin kaldır' : 'Admin yap'"></button>
+            <button @click="toggleActive(u)" class="px-2.5 py-1 rounded ring-1 ring-slate-200 hover:bg-slate-50" x-text="u.is_active ? 'Pasifleştir' : 'Aktifleştir'"></button>
+            <button @click="resetPassword(u)" class="px-2.5 py-1 rounded ring-1 ring-slate-200 hover:bg-slate-50">Parola</button>
+            <button @click="deleteUser(u)" class="px-2.5 py-1 rounded text-rose-600 ring-1 ring-rose-200 hover:bg-rose-50">Sil</button>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Desktop table -->
+    <div class="hidden md:block rounded-2xl bg-white ring-1 ring-slate-200 overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wider">
+          <tr>
+            <th class="text-left px-4 py-3">#</th>
+            <th class="text-left px-4 py-3">E-posta</th>
+            <th class="text-left px-4 py-3">İsim</th>
+            <th class="text-left px-4 py-3">Rol</th>
+            <th class="text-left px-4 py-3">Durum</th>
+            <th class="text-left px-4 py-3">Arş.</th>
+            <th class="text-left px-4 py-3">Anahtar</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="u in users" :key="u.id">
+            <tr class="border-t border-slate-100 hover:bg-slate-50/60">
+              <td class="px-4 py-2.5 text-slate-400" x-text="u.id"></td>
+              <td class="px-4 py-2.5 truncate max-w-[220px]" x-text="u.email"></td>
+              <td class="px-4 py-2.5 text-slate-600" x-text="u.display_name || ''"></td>
+              <td class="px-4 py-2.5">
+                <span x-show="u.is_admin" class="text-[10px] px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 uppercase">admin</span>
+                <span x-show="!u.is_admin" class="text-xs text-slate-400">—</span>
+              </td>
+              <td class="px-4 py-2.5"><span :class="u.is_active ? 'text-emerald-600' : 'text-rose-600'" x-text="u.is_active ? 'aktif' : 'pasif'"></span></td>
+              <td class="px-4 py-2.5 text-slate-500" x-text="u.job_count"></td>
+              <td class="px-4 py-2.5 text-slate-500" x-text="u.key_count"></td>
+              <td class="px-4 py-2.5 text-right whitespace-nowrap">
+                <button @click="toggleAdmin(u)" class="text-xs px-2 py-1 rounded hover:bg-slate-100 text-slate-600" x-text="u.is_admin ? '↓admin' : '↑admin'"></button>
+                <button @click="toggleActive(u)" class="text-xs px-2 py-1 rounded hover:bg-slate-100 text-slate-600" x-text="u.is_active ? 'pasif' : 'aktif'"></button>
+                <button @click="resetPassword(u)" class="text-xs px-2 py-1 rounded hover:bg-slate-100 text-slate-600">parola</button>
+                <button @click="deleteUser(u)" class="text-xs px-2 py-1 rounded hover:bg-rose-50 text-rose-600">sil</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== System Keys tab ===== -->
+  <div x-show="active === 'keys'" class="mt-6">
+    <p class="text-sm text-slate-500 mb-3">Sistem-geneli anahtarlar. Kullanıcının kendi anahtarı yoksa fallback olarak kullanılır.</p>
+    <div class="grid sm:grid-cols-2 gap-3">
+      {% for p in providers %}
+      <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <h3 class="font-semibold truncate">{{ p.name }}</h3>
+              {% if p.open_source %}<span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">açık</span>{% endif %}
+              {% if p.free_tier %}<span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-brand-50 text-brand-700">ücretsiz</span>{% endif %}
+            </div>
+            <div class="text-[11px] text-slate-400 mt-1 truncate font-mono">{{ p.default_model }}</div>
+            <div class="text-xs mt-2 flex items-center gap-2">
+              <span :class="sysStatus('{{ p.id }}') === 'aktif' ? 'text-emerald-600' : 'text-slate-400'" x-text="sysStatus('{{ p.id }}')"></span>
+              <span class="font-mono text-slate-400 text-[11px]" x-text="sysMasked('{{ p.id }}')"></span>
+            </div>
+          </div>
+          <a href="{{ p.docs_url }}" target="_blank" class="text-xs text-brand-600 hover:underline shrink-0">Al →</a>
+        </div>
+        <div class="mt-4 grid gap-2">
+          <input type="password" x-model="sysInputs['{{ p.id }}']" placeholder="{{ p.key_hint }}"
+            class="rounded-lg bg-slate-50 ring-1 ring-slate-200 focus:ring-brand-400 focus:ring-2 px-3 py-2 text-sm font-mono outline-none" />
+          <select x-model="sysModels['{{ p.id }}']" class="rounded-lg bg-slate-50 ring-1 ring-slate-200 px-2 py-2 text-xs">
+            <option value="">{{ p.default_model }}</option>
+            {% for m in p.models %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+          </select>
+          <div class="flex gap-2">
+            <button @click="saveSysKey('{{ p.id }}')" class="flex-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium py-2">Kaydet</button>
+            <button x-show="sysStatus('{{ p.id }}') === 'aktif'" @click="deleteSysKey('{{ p.id }}')" class="rounded-lg ring-1 ring-slate-200 hover:bg-slate-50 text-slate-600 text-sm px-3 py-2">Sil</button>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- ===== Jobs tab ===== -->
+  <div x-show="active === 'jobs'" class="mt-6">
+    <p class="text-sm text-slate-500 mb-3">Tüm kullanıcıların son araştırmaları.</p>
+
+    <!-- Mobile cards -->
+    <div class="md:hidden space-y-2">
+      <template x-for="j in jobs" :key="j.id">
+        <div class="rounded-xl bg-white ring-1 ring-slate-200 p-4">
+          <div class="flex items-center gap-2 text-[11px]">
+            <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase tracking-wider" x-text="j.kind"></span>
+            <span :class="statusClass(j.status)" class="font-medium uppercase" x-text="j.status"></span>
+            <span class="ml-auto text-slate-400" x-text="formatDate(j.created_at)"></span>
+          </div>
+          <a :href="`/research/${j.id}`" class="block font-medium mt-1.5 truncate text-brand-600 hover:underline" x-text="j.target"></a>
+          <div class="text-[11px] text-slate-500 mt-0.5 truncate" x-text="j.user_email"></div>
+          <div class="mt-2 text-right">
+            <button @click="deleteJob(j)" class="text-xs text-rose-600">sil</button>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Desktop table -->
+    <div class="hidden md:block rounded-2xl bg-white ring-1 ring-slate-200 overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wider">
+          <tr><th class="text-left px-4 py-3">#</th><th class="text-left px-4 py-3">Kullanıcı</th><th class="text-left px-4 py-3">Hedef</th><th class="text-left px-4 py-3">Tür</th><th class="text-left px-4 py-3">Durum</th><th class="text-left px-4 py-3">LLM</th><th class="text-left px-4 py-3">Tarih</th><th></th></tr>
+        </thead>
+        <tbody>
+          <template x-for="j in jobs" :key="j.id">
+            <tr class="border-t border-slate-100 hover:bg-slate-50/60">
+              <td class="px-4 py-2.5 text-slate-400" x-text="j.id"></td>
+              <td class="px-4 py-2.5 truncate max-w-[180px] text-slate-600" x-text="j.user_email"></td>
+              <td class="px-4 py-2.5"><a :href="`/research/${j.id}`" class="text-brand-600 hover:underline" x-text="j.target"></a></td>
+              <td class="px-4 py-2.5 text-slate-500" x-text="j.kind"></td>
+              <td class="px-4 py-2.5" :class="statusClass(j.status)" x-text="j.status"></td>
+              <td class="px-4 py-2.5 text-slate-500 text-xs" x-text="j.used_llm || ''"></td>
+              <td class="px-4 py-2.5 text-slate-500 text-xs" x-text="formatDate(j.created_at)"></td>
+              <td class="px-4 py-2.5 text-right"><button @click="deleteJob(j)" class="text-xs text-rose-500 hover:text-rose-600">sil</button></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== Settings tab ===== -->
+  <div x-show="active === 'system'" class="mt-6 space-y-3">
+    <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
+      <div class="text-sm font-semibold mb-3">Sistem ayarları</div>
+      <div class="flex items-center justify-between gap-4 py-2">
+        <div>
+          <div class="text-sm font-medium">Yeni kayıtlar</div>
+          <div class="text-xs text-slate-500">Kapatınca kullanıcı sadece sen oluşturabilirsin</div>
+        </div>
+        <button @click="toggleRegistration()"
+          :class="config.registration_open ? 'bg-emerald-500' : 'bg-slate-300'"
+          class="relative inline-flex h-6 w-11 shrink-0 rounded-full transition">
+          <span :class="config.registration_open ? 'translate-x-5' : 'translate-x-0'" class="inline-block size-6 rounded-full bg-white shadow ring-1 ring-slate-200 transition"></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
+      <div class="text-sm font-semibold mb-2">Sistem bilgileri</div>
+      <dl class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+        <div><dt class="text-xs text-slate-500">Toplam kullanıcı</dt><dd class="text-base font-semibold" x-text="config.user_count"></dd></div>
+        <div><dt class="text-xs text-slate-500">Admin sayısı</dt><dd class="text-base font-semibold" x-text="config.admin_count"></dd></div>
+        <div><dt class="text-xs text-slate-500">Toplam araştırma</dt><dd class="text-base font-semibold" x-text="config.job_count"></dd></div>
+        <div><dt class="text-xs text-slate-500">Sistem LLM</dt><dd class="text-base font-semibold" x-text="(config.system_keys_enabled||[]).join(', ') || '—'"></dd></div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<script>
+  function adminView() {
+    return {
+      tabs: [
+        {id:'users',  label:'Kullanıcılar'},
+        {id:'keys',   label:'Sistem Anahtarları'},
+        {id:'jobs',   label:'Araştırmalar'},
+        {id:'system', label:'Ayarlar'},
+      ],
+      active: 'users',
+      users: [], jobs: [], sysKeys: [], config: {},
+      newUser: { email:'', password:'', is_admin:false },
+      sysInputs: {}, sysModels: {},
+
+      async loadAll() { await Promise.all([this.loadUsers(), this.loadSysKeys(), this.loadJobs(), this.loadConfig()]); },
+      async loadUsers()   { this.users = await window.app.api('/api/admin/users'); },
+      async loadSysKeys() { this.sysKeys = await window.app.api('/api/admin/system-keys'); },
+      async loadJobs()    { this.jobs = await window.app.api('/api/admin/jobs'); },
+      async loadConfig()  { this.config = await window.app.api('/api/admin/system'); },
+
+      sysStatus(id) { const k = this.sysKeys.find(k => k.provider === id); return (k && k.has_value && k.enabled) ? 'aktif' : ''; },
+      sysMasked(id) { const k = this.sysKeys.find(k => k.provider === id); return k ? (k.masked || '') : ''; },
+
+      async createUser() {
+        if (!this.newUser.email || !this.newUser.password) return;
+        try {
+          await window.app.api('/api/admin/users', { method:'POST', body: JSON.stringify(this.newUser) });
+          this.newUser = { email:'', password:'', is_admin:false };
+          await this.loadUsers(); await this.loadConfig();
+        } catch (e) { alert(e.message); }
+      },
+      async toggleAdmin(u) { try { await window.app.api(`/api/admin/users/${u.id}`, { method:'PATCH', body: JSON.stringify({ is_admin: !u.is_admin }) }); await this.loadUsers(); await this.loadConfig(); } catch (e) { alert(e.message); } },
+      async toggleActive(u){ try { await window.app.api(`/api/admin/users/${u.id}`, { method:'PATCH', body: JSON.stringify({ is_active: !u.is_active }) }); await this.loadUsers(); } catch (e) { alert(e.message); } },
+      async resetPassword(u) {
+        const np = prompt(`'${u.email}' için yeni parola (min 8 karakter):`);
+        if (!np || np.length < 8) return;
+        try { await window.app.api(`/api/admin/users/${u.id}`, { method:'PATCH', body: JSON.stringify({ new_password: np }) }); alert('Parola güncellendi'); } catch (e) { alert(e.message); }
+      },
+      async deleteUser(u) { if (!confirm(`'${u.email}' silinsin mi?`)) return; try { await window.app.api(`/api/admin/users/${u.id}`, { method:'DELETE' }); await this.loadUsers(); await this.loadConfig(); } catch (e) { alert(e.message); } },
+
+      async saveSysKey(id) {
+        const value = (this.sysInputs[id] || '').trim();
+        if (!value) return alert('Önce anahtarı yapıştır');
+        await window.app.api(`/api/admin/system-keys/${id}`, { method:'PUT', body: JSON.stringify({ value, model: this.sysModels[id] || null, enabled: true }) });
+        this.sysInputs[id] = '';
+        await this.loadSysKeys(); await this.loadConfig();
+      },
+      async deleteSysKey(id) { if (!confirm('Sistem anahtarını sil?')) return; await window.app.api(`/api/admin/system-keys/${id}`, { method:'DELETE' }); await this.loadSysKeys(); await this.loadConfig(); },
+
+      async deleteJob(j) { if (!confirm('Araştırma silinsin?')) return; await window.app.api(`/api/admin/jobs/${j.id}`, { method:'DELETE' }); await this.loadJobs(); await this.loadConfig(); },
+      async toggleRegistration() {
+        const next = !this.config.registration_open;
+        this.config = await window.app.api('/api/admin/system', { method:'PUT', body: JSON.stringify({ registration_open: next }) });
+      },
+
+      statusClass(s) { return ({ pending:'text-amber-600', running:'text-brand-600', done:'text-emerald-600', error:'text-rose-600' })[s] || ''; },
+      formatDate(iso) { try { return new Date(iso).toLocaleDateString('tr-TR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'}); } catch { return ''; } },
+    };
+  }
+</script>
+{% endblock %}

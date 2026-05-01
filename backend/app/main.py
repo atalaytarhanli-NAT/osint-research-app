@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from .api import admin as admin_api
 from .api import auth as auth_api
 from .api import research as research_api
 from .api import settings as settings_api
@@ -39,6 +40,7 @@ templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 app.include_router(auth_api.router)
 app.include_router(settings_api.router)
 app.include_router(research_api.router)
+app.include_router(admin_api.router)
 
 
 @app.on_event("startup")
@@ -105,5 +107,17 @@ def settings_page(request: Request, user=Depends(get_optional_user)):
         return RedirectResponse(url="/login", status_code=302)
     return templates.TemplateResponse(
         "settings.html",
+        {"request": request, "user": user, "providers": list(PROVIDERS.values())},
+    )
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_page(request: Request, user=Depends(get_optional_user)):
+    if user is None:
+        return RedirectResponse(url="/login", status_code=302)
+    if not user.is_admin:
+        return RedirectResponse(url="/dashboard", status_code=302)
+    return templates.TemplateResponse(
+        "admin.html",
         {"request": request, "user": user, "providers": list(PROVIDERS.values())},
     )

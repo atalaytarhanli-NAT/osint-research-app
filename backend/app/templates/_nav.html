@@ -1,24 +1,34 @@
-<nav class="border-b border-white/5 bg-slate-950/60 backdrop-blur-xl sticky top-0 z-40">
-  <div class="mx-auto max-w-7xl flex items-center gap-6 px-6 py-3">
-    <a href="/dashboard" class="flex items-center gap-2 group">
-      <div class="size-8 rounded-lg bg-gradient-to-br from-brand-400 to-purple-500 grid place-items-center font-bold text-slate-950">
-        ◉
+<nav x-data="{open:false}" class="sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6">
+    <div class="flex items-center gap-3 py-3">
+      <a href="/dashboard" class="flex items-center gap-2 mr-2 shrink-0">
+        <div class="size-8 rounded-xl bg-gradient-to-br from-brand-500 to-fuchsia-500 grid place-items-center text-white font-bold">◉</div>
+        <span class="text-[15px] font-semibold tracking-tight">OSINT</span>
+      </a>
+
+      <div class="hidden md:flex items-center gap-1 text-sm text-slate-600">
+        <a href="/dashboard" class="px-3 py-1.5 rounded-lg hover:bg-slate-100">Araştır</a>
+        <a href="/history" class="px-3 py-1.5 rounded-lg hover:bg-slate-100">Geçmiş</a>
+        <a href="/settings" class="px-3 py-1.5 rounded-lg hover:bg-slate-100">Anahtarlar</a>
+        {% if user.is_admin %}<a href="/admin" class="px-3 py-1.5 rounded-lg hover:bg-slate-100 text-brand-600 font-medium">Admin</a>{% endif %}
       </div>
-      <span class="text-sm font-semibold tracking-tight">OSINT.research</span>
-    </a>
-    <div class="flex items-center gap-1 text-sm text-slate-300">
-      <a href="/dashboard" class="px-3 py-1.5 rounded-md hover:bg-white/5">Araştır</a>
-      <a href="/history" class="px-3 py-1.5 rounded-md hover:bg-white/5">Geçmiş</a>
-      <a href="/settings" class="px-3 py-1.5 rounded-md hover:bg-white/5">API Anahtarları</a>
+
+      <div class="ml-auto flex items-center gap-2">
+        <span class="hidden sm:inline text-xs text-slate-500 truncate max-w-[160px]">{{ user.display_name or user.email }}</span>
+        <button onclick="window.app.logout()" class="hidden md:inline-flex text-xs px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700">Çıkış</button>
+        <button @click="open=!open" class="md:hidden inline-flex items-center justify-center size-9 rounded-lg border border-slate-200 hover:bg-slate-50" aria-label="menu">
+          <svg x-show="!open" class="size-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+          <svg x-show="open" class="size-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 6l12 12M6 18L18 6"/></svg>
+        </button>
+      </div>
     </div>
-    <div class="ml-auto flex items-center gap-3 text-sm">
-      <span class="text-slate-400 hidden sm:inline">{{ user.display_name or user.email }}</span>
-      <button
-        onclick="window.app.logout()"
-        class="px-3 py-1.5 rounded-md border border-white/10 hover:border-white/30 text-slate-300"
-      >
-        Çıkış
-      </button>
+
+    <div x-show="open" x-collapse class="md:hidden pb-3 grid gap-1 text-sm">
+      <a href="/dashboard" class="px-3 py-2 rounded-lg hover:bg-slate-100">Araştır</a>
+      <a href="/history" class="px-3 py-2 rounded-lg hover:bg-slate-100">Geçmiş</a>
+      <a href="/settings" class="px-3 py-2 rounded-lg hover:bg-slate-100">Anahtarlar</a>
+      {% if user.is_admin %}<a href="/admin" class="px-3 py-2 rounded-lg hover:bg-slate-100 text-brand-600 font-medium">Admin</a>{% endif %}
+      <button onclick="window.app.logout()" class="text-left px-3 py-2 rounded-lg hover:bg-slate-100 text-rose-600">Çıkış</button>
     </div>
   </div>
 </nav>
