@@ -457,6 +457,10 @@ _KIND_TO_ADMIRALTY = {
     "social": ("D", "4", "PERSINT"),
     "archive": ("B", "2", "GENERAL"),
     "web": ("F", "4", "GENERAL"),
+    "cybint": ("A", "1", "CORPINT"),       # DNS/crt.sh — verifiable infra signals
+    "sanction": ("A", "1", "CORPINT"),     # OpenSanctions — government-grade
+    "attack_surface": ("B", "2", "CORPINT"),  # dnstwist registered domain
+    "link_signal": ("C", "2", "LINKINT"),  # Tracking ID cross-domain match
 }
 
 
@@ -486,6 +490,59 @@ def _rule_based_admiralty(sources: list[dict], limit: int = 8) -> list[dict]:
 
 def _rule_based_risk_matrix(sources: list[dict], groups: dict[str, list[int]], risk_score: float) -> list[dict]:
     matrix: list[dict] = []
+    sanction_idx = [i for i, s in enumerate(sources) if s.get("kind") == "sanction"]
+    if sanction_idx:
+        matrix.append({
+            "risk": "Yaptırım/PEP listesi eşleşmesi tespit edildi (OpenSanctions)",
+            "likelihood": 5,
+            "impact": 5,
+            "score": 25,
+            "category": "legal",
+            "mitigation": "Acil hukuki/uyumluluk değerlendirmesi gerekir; iş ilişkisi/işlem askıya alınmalı.",
+            "source_indices": sanction_idx[:3],
+        })
+    typo_idx = [i for i, s in enumerate(sources) if s.get("kind") == "attack_surface"]
+    if typo_idx:
+        matrix.append({
+            "risk": f"Typo-squat domainler aktif ({len(typo_idx)} canlı kayıt) — phishing/brand-spoofing yüzeyi",
+            "likelihood": 4,
+            "impact": 4,
+            "score": 16,
+            "category": "cyber",
+            "mitigation": "Typo-squat takedown süreci başlat, brand monitoring servisi devreye al, çalışan farkındalık eğitimi.",
+            "source_indices": typo_idx[:3],
+        })
+    cybint_idx = [i for i, s in enumerate(sources) if s.get("kind") == "cybint"]
+    spf_dmarc_missing = False
+    for i in cybint_idx:
+        raw = sources[i].get("raw") or {}
+        if raw.get("spf_present") is False or raw.get("dmarc_present") is False:
+            spf_dmarc_missing = True
+            break
+    if spf_dmarc_missing:
+        matrix.append({
+            "risk": "SPF/DMARC eksik — e-posta spoofing açık",
+            "likelihood": 4,
+            "impact": 3,
+            "score": 12,
+            "category": "cyber",
+            "mitigation": "DNS TXT kayıtlarına SPF v=spf1 ve DMARC v=DMARC1 p=quarantine ekle.",
+            "source_indices": cybint_idx[:1],
+        })
+    cross_domain_tracking = [
+        i for i, s in enumerate(sources)
+        if s.get("kind") == "link_signal" and (s.get("raw") or {}).get("cross_domain")
+    ]
+    if cross_domain_tracking:
+        matrix.append({
+            "risk": "Cross-domain tracking ID eşleşmesi — paylaşılan operatör/sahip sinyali",
+            "likelihood": 3,
+            "impact": 2,
+            "score": 6,
+            "category": "operational",
+            "mitigation": "Eşleşen domainlerin gerçek sahiplik zincirini WHOIS/Companies House ile doğrula.",
+            "source_indices": cross_domain_tracking[:3],
+        })
     profile_count = len(groups.get("profile", []))
     if profile_count >= 4:
         matrix.append({
@@ -655,6 +712,11 @@ def _rule_based_report(target: str, kind: str, sources: list[dict]) -> dict[str,
         for s in sources
     ):
         risk_score += 0.3
+    # NATO/IC: yaptırım/typosquat → kritik risk
+    if any(s.get("kind") == "sanction" for s in sources):
+        risk_score = max(risk_score, 0.95)  # forces "high"
+    if any(s.get("kind") == "attack_surface" for s in sources):
+        risk_score = max(risk_score, 0.7)
     risk_level = _risk_level(min(risk_score, 1.0))
 
     cross_verification = _build_cross_verification(sources, groups)

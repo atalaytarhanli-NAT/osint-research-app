@@ -20,7 +20,7 @@ from ..llm.analyzer import build_report
 from ..llm.intelligence_brief import build_intelligence_brief
 from ..llm.providers import PROVIDERS
 from ..models import ApiKey, ResearchJob, SystemApiKey, User
-from ..osint.pipeline import run_pipeline
+from ..osint.pipeline import collect_geopoints, run_pipeline
 
 
 log = logging.getLogger("research")
@@ -177,11 +177,15 @@ def _run_job(job_id: int) -> None:
                     model=model,
                 )
             )
+            # GEOINT — koordinat noktası çıkarımı (Wikidata + şehir + IP geo)
+            geopoints = asyncio.run(collect_geopoints(job.target, sources))
+
             job.result_json = json.dumps(
                 {
                     "sources": sources,
                     "report": report,
                     "intelligence_brief": intelligence_brief,
+                    "geopoints": geopoints,
                 },
                 ensure_ascii=False,
                 default=str,

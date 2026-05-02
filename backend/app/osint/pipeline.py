@@ -15,15 +15,20 @@ from .base import SourceResult
 from .bing_search import search_bing
 from .brave_search import search_brave
 from .crtsh import search_crtsh
+from .dns_records import lookup_dns
+from .dnstwist_check import check_typosquats
 from .gdelt import search_gdelt
+from .geolocation import extract_geopoints
 from .github_oss import search_github
 from .hackernews import search_hn
 from .mojeek_search import search_mojeek
 from .person_enrich import enrich_with_variations
 from .reddit import search_reddit
+from .sanctions import search_sanctions
 from .serper_search import search_serper
 from .social_probe import probe_username
 from .tavily_search import search_tavily
+from .tracking_ids import extract_tracking_ids
 from .wayback import wayback_lookup
 from .web_search import search_news, search_web
 from .wikidata import search_wikidata
@@ -98,8 +103,11 @@ async def _web_pass(
         tasks.append(_safe("serper", search_serper(query, keys["serper"])))
     if kind == "url":
         tasks.append(_safe("crtsh", search_crtsh(raw_target)))
+        tasks.append(_safe("dns", lookup_dns(raw_target)))
+        tasks.append(_safe("dnstwist", check_typosquats(raw_target)))
     if kind in ("person", "organization", "auto"):
         tasks.append(_safe("person_enrich", enrich_with_variations(raw_target, kind)))
+        tasks.append(_safe("sanctions", search_sanctions(raw_target, kind=kind if kind != "auto" else "person")))
 
     chunks = await asyncio.gather(*tasks)
     flat: list[SourceResult] = []
@@ -264,4 +272,18 @@ async def run_pipeline(
         all_results = first
 
     filtered = _filter_relevance(target, kind, all_results)
-    return _dedupe(filtered)
+    deduped = _dedupe(filtered)
+
+    # Post-process: tracking ID çıkarımı (C5 LINKINT)
+    tracking_results = extract_tracking_ids(deduped)
+    if tracking_results:
+        deduped.extend(r.to_dict() for r in tracking_results)
+        log.info("OSINT tracking IDs: %d signals extracted", len(tracking_results))
+
+    return deduped
+
+
+async def collect_geopoints(target: str, sources: list[dict[str, Any]]) -> list[dict]:
+    """Pipeline çıktısından koordinat noktalarını çıkar (harita render için).
+    Pipeline'dan ayrı çağrılır çünkü hem rapor JSON'una hem frontend'e ihtiyacı var."""
+    return await extract_geopoints(target, sources)

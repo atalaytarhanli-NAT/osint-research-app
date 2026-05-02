@@ -16,3 +16,4 @@ cryptography==44.0.0
 psycopg2-binary==2.9.10
 python-dateutil==2.9.0.post0
 itsdangerous==2.2.0
+dnstwist==20250130
