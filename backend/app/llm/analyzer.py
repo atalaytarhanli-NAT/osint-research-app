@@ -31,7 +31,9 @@ SYSTEM_PROMPT = """Sen NATO OSINT Handbook (2024 revizyonu), IC Directive 203 (A
 
 DİSİPLİN KURALLARI (KESİN):
 - KENDİ ÖN BİLGİLERİNİ KULLANMA. SADECE aşağıda verilen kaynaklarda yazılana dayan. Training verisinden uydurma yapma.
+- **EŞ İSİM ÇAKIŞMASI KONTROLÜ:** Kaynaklarda hedef ismin TAM hali (BİRİNCİL_HEDEF tam olarak) geçmiyorsa, kaynak farklı bir kişi/kurum hakkında demektir — onu hedefin verisi olarak SENTEZLEME. Örn. hedef "Atalay Tarhanlı" ise "Can Atalay" veya "Atalay Mutfak" hakkındaki kaynaklar bu hedefin verisi DEĞİLDİR; eş isim çakışması olarak işaretle, hedefe atıf yapma.
 - Bir iddiayı raporda kullanmadan önce hangi kaynak indeksinden geldiğini `source_indices` listesinde belirt. Boş `source_indices` ile iddia yazmak YASAK.
+- Eğer hiçbir kaynakta hedef adının tamamı geçmiyorsa: overview="Hedef '{target}' için doğrulanabilir veri bulunamadı; kaynaklar farklı kişilere/kurumlara ait (eş isim çakışması).", top_findings=[], identity.definition="Doğrulanamadı — kaynaklarda hedef adı geçmiyor.", confidence=0.1, risk_level="low".
 - Veri yoksa "intelligence gap" olarak beyan et; spekülasyon yapacaksan "(spekülasyon)" etiketi koy.
 - Çıktı YALNIZCA geçerli JSON, ek açıklama YAZMA, kod bloğu (```) kullanma.
 
@@ -126,8 +128,53 @@ JSON ŞEMASI:
 KAÇINMA: pir_matrix en az 3 öğe, admiralty_findings en az 3 öğe (kaynak varsa), ach_analysis en az 2 hipotez, risk_matrix en az 2 risk, intelligence_gaps en az 1 öğe (her raporda mutlaka var). Hiçbir alanı atlama; veri yoksa boş liste/dizi döndür."""
 
 
+def _target_match_audit(target: str, sources: list[dict]) -> dict:
+    """Kaynaklarda hedef adının ne kadar geçtiğini denetle. LLM'e uyarı için."""
+    target_fold = "".join(c for c in target.lower() if c.isalnum() or c == " ")
+    parts = [p for p in target_fold.split() if len(p) >= 3]
+    if not parts:
+        return {"full_match_count": 0, "any_word_count": 0, "warning": ""}
+
+    full_match = 0
+    any_match = 0
+    for s in sources:
+        if s.get("source", "").startswith("social:"):
+            continue  # Username probe zaten target'tan türemiş
+        text = (s.get("title", "") + " " + s.get("snippet", "") + " " + s.get("url", "")).lower()
+        # Türkçe fold için basit normalize
+        for ch in [("ç", "c"), ("ğ", "g"), ("ı", "i"), ("ö", "o"), ("ş", "s"), ("ü", "u"), ("İ", "i")]:
+            text = text.replace(ch[0], ch[1])
+        parts_normalized = [p.translate(str.maketrans("çğıöşüİ", "cgiosui")) for p in parts]
+        if all(p in text for p in parts_normalized):
+            full_match += 1
+        if any(p in text for p in parts_normalized):
+            any_match += 1
+
+    warning = ""
+    if full_match == 0 and any_match > 0:
+        warning = (
+            f"⚠ EŞ İSİM ÇAKIŞMASI ALARMI: Hedef '{target}' kaynakların hiçbirinde tam olarak "
+            f"geçmiyor; sadece kısmi kelime eşleşmesi ({any_match} kaynakta) var. "
+            f"Bu kaynaklar muhtemelen FARKLI kişilere/kurumlara ait. Hedefe ait olarak SENTEZLEME, "
+            f"overview'da 'doğrulanamadı, eş isim çakışması' beyanı yap."
+        )
+    elif full_match < 3 and len(sources) > 10:
+        warning = (
+            f"⚠ DİKKAT: {len(sources)} kaynaktan sadece {full_match} tanesinde hedef adı tam olarak geçiyor. "
+            f"Diğerleri eş isim çakışması olabilir, dikkatli sentezle."
+        )
+    return {"full_match_count": full_match, "any_word_count": any_match, "warning": warning}
+
+
 def _user_prompt(target: str, kind: str, sources: list[dict]) -> str:
-    lines = [f"Hedef konu: {target}", f"Tür ipucu: {kind}", "", "Kaynaklar:"]
+    audit = _target_match_audit(target, sources)
+    lines = [f"Hedef konu: {target}", f"Tür ipucu: {kind}", ""]
+    if audit["warning"]:
+        lines.append(audit["warning"])
+        lines.append("")
+    lines.append(f"Hedef adının tam eşleşme sayısı: {audit['full_match_count']}/{len(sources)}")
+    lines.append("")
+    lines.append("Kaynaklar:")
     for i, s in enumerate(sources):
         title = (s.get("title") or "").strip()
         snippet = (s.get("snippet") or "").strip()

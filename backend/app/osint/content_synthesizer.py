@@ -213,11 +213,60 @@ def _high_signal_sources(sources: list[dict]) -> dict[str, list[dict]]:
 # ============================================================
 
 
+_TR_FOLD_TABLE = str.maketrans({
+    "ç": "c", "Ç": "c", "ğ": "g", "Ğ": "g", "ı": "i", "I": "i",
+    "İ": "i", "ö": "o", "Ö": "o", "ş": "s", "Ş": "s", "ü": "u", "Ü": "u",
+})
+
+
+def _check_name_collision(target: str, sources: list[dict]) -> tuple[int, int, list[str]]:
+    """Kaynaklarda hedef adının tam eşleşme sayısını + alternatif isimleri tespit et.
+
+    Returns: (full_match_count, total_non_social, alternative_names)
+    """
+    target_fold = target.translate(_TR_FOLD_TABLE).lower()
+    parts = [p for p in target_fold.split() if len(p) >= 3]
+    if not parts:
+        return (0, 0, [])
+
+    full = 0
+    total = 0
+    alt_names: Counter[str] = Counter()
+    for s in sources:
+        if (s.get("source") or "").startswith("social:"):
+            continue
+        total += 1
+        text = (s.get("title", "") + " " + s.get("snippet", "")).translate(_TR_FOLD_TABLE).lower()
+        if all(p in text for p in parts):
+            full += 1
+            continue
+        # Hangi alternatif isim öne çıkıyor? Title'dan çıkar (ilk 2-3 word)
+        title_words = re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü]+", s.get("title", ""))[:3]
+        if title_words:
+            cand = " ".join(title_words[:2])
+            if len(cand) >= 6 and cand.lower() != target.lower():
+                alt_names[cand.title()] += 1
+    return (full, total, [name for name, _ in alt_names.most_common(3)])
+
+
 def synthesize_overview(target: str, kind: str, sources: list[dict]) -> str:
     """Ana özet paragrafı — kaynaklara dayalı akıcı 3-5 cümle."""
     n = len(sources)
     if n == 0:
         return f"'{target}' için açık kaynaklarda yeterli veri bulunamadı."
+
+    # KRİTİK: Eş isim çakışması kontrolü
+    if kind in ("person", "organization"):
+        full_match, total_web, alt_names = _check_name_collision(target, sources)
+        if total_web >= 3 and full_match == 0:
+            # Hedef adı hiç geçmiyor — kaynakların tümü farklı kişiler
+            alt_str = f" Görünen alternatif isimler: {', '.join(alt_names)}." if alt_names else ""
+            return (
+                f"⚠ Hedef '{target}' için doğrulanabilir veri bulunamadı. {total_web} web kaynağı "
+                f"toplandı ancak HİÇBİRİNDE hedef adı tam olarak geçmiyor — bu kaynaklar farklı "
+                f"kişilere/kurumlara ait (eş isim çakışması).{alt_str} "
+                f"Daha spesifik seed (kurum, lokasyon, kullanıcı adı) ile yeniden arama önerilir."
+            )
 
     parts: list[str] = []
     kind_dist = _kind_distribution(sources)

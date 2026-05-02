@@ -11,9 +11,10 @@ Anahtar gerekmez. Render'da fail olursa Tavily/Serper/Google CSE öneri.
 
 from __future__ import annotations
 
+import base64
 import logging
 import random
-from urllib.parse import quote_plus
+from urllib.parse import parse_qs, quote_plus, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -29,6 +30,30 @@ UA_POOL = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0",
 ]
+
+
+def _decode_bing_url(href: str) -> str:
+    """Bing redirect URL'lerini decode et: bing.com/ck/a?u=a1<base64> → real URL.
+    Format: u=a1aHR0cHM6Ly...  (a1 prefix, sonrası base64 standard)."""
+    try:
+        if "bing.com/ck/a" not in href and "bing.com/ck/a?" not in href:
+            return href
+        qs = parse_qs(urlparse(href).query)
+        u = qs.get("u", [None])[0]
+        if not u:
+            return href
+        # 'a1' prefix var, atıyoruz
+        b64 = u[2:] if u.startswith(("a1", "A1")) else u
+        # Padding ekle
+        b64 += "=" * ((4 - len(b64) % 4) % 4)
+        decoded = base64.b64decode(b64).decode("utf-8", errors="replace")
+        # bazen başında '\x01' veya extra char var
+        decoded = decoded.lstrip("\x00\x01").strip()
+        if decoded.startswith("http"):
+            return decoded
+    except Exception as exc:
+        log.debug("bing url decode failed: %s", exc)
+    return href
 
 
 def _parse_bing_html(html: str, max_results: int) -> list[SourceResult]:
@@ -54,6 +79,8 @@ def _parse_bing_html(html: str, max_results: int) -> list[SourceResult]:
         href = a["href"]
         if not href.startswith("http"):
             continue
+        # Bing'in tıklama redirect'ini decode et (bing.com/ck/a?u=base64...)
+        href = _decode_bing_url(href)
         results.append(
             SourceResult(
                 source="bing",

@@ -28,6 +28,7 @@ from .person_enrich import enrich_with_variations
 from .ransomwatch import check_ransomwatch
 from .reddit import search_reddit
 from .sanctions import search_sanctions
+from .searxng import search_searxng
 from .sec_edgar import search_sec_edgar
 from .serper_search import search_serper
 from .social_probe import probe_username
@@ -92,6 +93,7 @@ async def _web_pass(
         _safe("bing", search_bing(query)),
         _safe("yandex", search_yandex(query)),
         _safe("mojeek", search_mojeek(query)),
+        _safe("searxng", search_searxng(query)),
         _safe("wiki_en", lookup_wikipedia(raw_target, "en")),
         _safe("wiki_tr", lookup_wikipedia(raw_target, "tr")),
         _safe("wikidata", search_wikidata(raw_target)),
@@ -173,14 +175,15 @@ def _fold(text: str) -> str:
 
 
 def _filter_relevance(target: str, kind: str, sources: list[SourceResult]) -> list[SourceResult]:
-    """Çok kelimeli isim/kurum hedeflerinde, başlık+snippet+url'de hedefin
-    anlamlı kelimelerinden hiçbiri geçmiyorsa o kaynağı düşür.
+    """Eş isim çakışmasını eler — 2+ kelimeli person/org hedefler için
+    target'ın **TÜM** anlamlı kelimeleri (Latin fold ile) text'te bulunmalı.
 
-    Türkçe → Latin fold tolerasyonu: "Tarhanlı" snippet'ta "Tarhanli" olarak
-    görünse de eşleşir. Bu olmazsa Türkçe karakterli aramalar 0 döndürür.
+    Eski mantık `any()` idi → "atalay tarhanlı" sorgusuna "Can Atalay" ve
+    "Atalay Mutfak" da geçiyordu (sadece "atalay" kelimesi için). Yeni mantık
+    `all()` — tüm kelimeler eşleşmezse drop. URL slug eşleşmesi de ek yol.
 
-    Filter sonrası 1'den az sonuç kalırsa filter'ı bypass eder (kullanıcının
-    kendini bulamamasından iyi)."""
+    Türkçe → Latin fold (Tarhanlı↔Tarhanli) korunuyor. enrich:* / social:* /
+    yetkili kaynaklar (wiki/sanction/financial/...) whitelist."""
     if kind not in ("person", "organization"):
         return sources
     sig_raw = _significant_words(target)
@@ -191,30 +194,36 @@ def _filter_relevance(target: str, kind: str, sources: list[SourceResult]) -> li
     out: list[SourceResult] = []
     target_fold = _fold(target).replace(" ", "")
     for s in sources:
-        # Yetkili kaynaklar (wiki/wikidata/wayback/archive) her zaman geçer
+        # Yetkili kaynaklar her zaman geçer
         if s.kind in ("wiki", "archive", "cybint", "sanction", "attack_surface",
                       "financial", "threat_exposure", "corp_registry", "link_signal"):
             out.append(s)
             continue
-        # social_probe sonuçları zaten username'den geldi, ilgili
-        if s.source.startswith("social:") or s.source.startswith("enrich:"):
+        # social_probe (Sherlock-style) sonuçları zaten username'den geldi
+        if s.source.startswith("social:"):
             out.append(s)
             continue
         text = _fold(" ".join([s.title or "", s.snippet or "", s.url or ""]))
-        if any(w in text for w in sig):
+        # AND: tüm anlamlı kelimeler text'te bulunmalı (eş isim çakışmasını eler)
+        if all(w in text for w in sig):
             out.append(s)
-        elif target_fold and target_fold in text.replace(" ", "").replace("-", "").replace("_", ""):
-            # URL slug eşleşmesi: "atalaytarhanli" pattern URL'de varsa kabul
+            continue
+        # URL slug eşleşmesi: "atalaytarhanli" pattern URL'de varsa kabul
+        slug_text = text.replace(" ", "").replace("-", "").replace("_", "").replace(".", "")
+        if target_fold and target_fold in slug_text:
             out.append(s)
-        else:
-            log.debug("dropped irrelevant: %s — %s", s.source, s.title[:80] if s.title else s.url)
+            continue
+        # enrich:* için: enrichment query specifically için target kombosunu
+        # arattı — yine de tüm kelimeler eşleşmezse alakasız (ör. "atalay tarhanlı
+        # LinkedIn" sorgusunun ilgisiz Bing sonucu Can Atalay'ı getirebiliyor)
+        log.debug("dropped irrelevant: %s — %s", s.source, s.title[:80] if s.title else s.url)
 
-    # Empty fallback: filter 0 döndürdüyse filter'ı atla — engine'lar zaten
-    # kullanıcı sorgusuna cevap verdi, drop etmek kullanıcıyı yanıltır.
-    if not out and sources:
-        log.warning("relevance filter zeroed all %d sources for %r — bypassing filter", len(sources), target)
-        return sources
-    log.info("relevance filter: %d → %d (kind=%s, target=%r)", len(sources), len(out), kind, target)
+    # Empty fallback: hiçbir engine sonuç döndürmediyse — sources zaten boş demek.
+    # Eğer sources doluysa ama filter hepsini drop ettiyse, eş isim çakışması var
+    # demek; filter'ı bypass ETMİYORUZ — kullanıcıya yanlış kişi raporu sunmaktansa
+    # boş döndürmek daha doğru. Boş set, downstream'de "doğrulanamadı" raporu üretir.
+    log.info("relevance filter: %d → %d (kind=%s, target=%r, AND mode)",
+             len(sources), len(out), kind, target)
     return out
 
 
