@@ -92,9 +92,23 @@
   <!-- ====== Mode: image ====== -->
   <div x-show="mode==='image'" class="mt-6 space-y-4">
     <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
-      <div class="text-sm font-semibold mb-3">Görsel yükle</div>
-      <p class="text-xs text-slate-500 mb-3">Görseli catbox.moe'ya public host eder, sonra Google Lens / Yandex / TinEye / Bing'de tek tıkla ters arama yapar. Maksimum 8 MB. <strong>Görsel sunucumuzda saklanmaz.</strong></p>
-      <input type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/bmp"
+      <div class="text-sm font-semibold mb-1">Görsel yükle</div>
+      <p class="text-xs text-slate-500 mb-3">
+        Görsel <strong>litterbox.catbox.moe</strong>'a geçici olarak yüklenir ve seçtiğin süre sonra <strong>otomatik silinir</strong>.
+        Sunucumuzda kalmaz. Maksimum 10 MB.
+      </p>
+      <div class="flex flex-wrap items-center gap-2 mb-3 text-xs">
+        <span class="text-slate-500">Otomatik sil:</span>
+        <div class="inline-flex rounded-lg bg-slate-100 p-0.5">
+          <template x-for="t in ['1h','12h','24h','72h']" :key="t">
+            <button type="button" @click="img.ttl = t"
+              :class="img.ttl === t ? 'bg-white shadow-sm text-slate-900 font-medium' : 'text-slate-500'"
+              class="px-2.5 py-1 rounded-md" x-text="t"></button>
+          </template>
+        </div>
+        <span class="text-slate-400 text-[11px]">(1h önerilir, ters arama için yeter)</span>
+      </div>
+      <input type="file" accept="image/*"
         @change="onFile($event)"
         class="text-sm w-full rounded-lg border border-dashed border-slate-300 p-3 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:text-slate-700 hover:file:bg-slate-200" />
       <div x-show="img.uploading" class="mt-2 text-xs text-slate-500">Yükleniyor…</div>
@@ -115,7 +129,10 @@
         <div class="text-sm font-semibold">Sonuç</div>
         <a :href="img.result?.image_url" target="_blank" rel="noopener" class="text-xs text-brand-600 hover:underline truncate max-w-[300px] sm:max-w-[500px]" x-text="img.result?.image_url"></a>
       </div>
-      <div x-show="img.result?.note" x-text="img.result?.note" class="mt-1 text-[11px] text-slate-500"></div>
+      <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+        <span x-show="img.result?.ttl" class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-mono">~<span x-text="img.result?.ttl"></span> sonra silinir</span>
+        <span x-show="img.result?.note" x-text="img.result?.note" class="text-slate-500"></span>
+      </div>
       <img x-show="img.result?.image_url" :src="img.result?.image_url" class="mt-3 max-h-48 rounded-lg border border-slate-200" />
 
       <div class="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -138,7 +155,7 @@
       mode: 'research',
       target: '', kind: 'auto', provider: '', intensity: 'deep', scope: 'all',
       loading: false, error: '', jobs: [],
-      img: { url: '', uploading: false, loading: false, error: '', result: null },
+      img: { url: '', ttl: '1h', uploading: false, loading: false, error: '', result: null },
 
       async init() { await this.load(); },
       async load() { try { this.jobs = await window.app.api('/api/research'); } catch (e) {} },
@@ -172,14 +189,13 @@
         try {
           const fd = new FormData();
           fd.append('file', f);
+          fd.append('ttl', this.img.ttl);
           const res = await fetch('/api/image/upload', { method: 'POST', credentials: 'include', body: fd });
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || `HTTP ${res.status}`);
-          }
-          this.img.result = await res.json();
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+          this.img.result = data;
         } catch (e) { this.img.error = e.message; }
-        finally { this.img.uploading = false; }
+        finally { this.img.uploading = false; ev.target.value = ''; }
       },
 
       async reverseByUrl() {
