@@ -137,7 +137,11 @@ def _run_job(job_id: int) -> None:
         db.commit()
 
         provider_id, key, model = _select_provider(job.user_id, job.used_llm, db)
-        brave_key = _get_search_key(job.user_id, "brave", db)
+        search_keys = {
+            "brave": _get_search_key(job.user_id, "brave", db),
+            "tavily": _get_search_key(job.user_id, "tavily", db),
+            "serper": _get_search_key(job.user_id, "serper", db),
+        }
         try:
             sources = asyncio.run(
                 run_pipeline(
@@ -145,7 +149,7 @@ def _run_job(job_id: int) -> None:
                     job.kind,
                     intensity=job.intensity or "deep",
                     scope=job.scope or "all",
-                    brave_key=brave_key,
+                    search_keys=search_keys,
                 )
             )
             report = asyncio.run(
