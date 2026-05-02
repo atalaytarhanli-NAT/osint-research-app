@@ -194,6 +194,88 @@ PROVIDERS: dict[str, ProviderSpec] = {
         style="search",
         kind="search",
     ),
+    # ---- Face/Image search adapters (kind="face_search") ----
+    # Settings UI'da görünür, görsel yüklendiğinde paralel sorgulanır.
+    "facecheck": ProviderSpec(
+        id="facecheck",
+        name="FaceCheck.ID (yüz arama, US)",
+        open_source=False, free_tier=True,
+        default_model="", models=[],
+        docs_url="https://facecheck.id",
+        key_hint="API token",
+        base_url="https://facecheck.id",
+        style="search", kind="face_search",
+    ),
+    "pimeyes": ProviderSpec(
+        id="pimeyes",
+        name="PimEyes (yüz arama, EU — kurumsal)",
+        open_source=False, free_tier=False,
+        default_model="", models=[],
+        docs_url="https://pimeyes.com",
+        key_hint="kurumsal anlaşma sonrası API key",
+        base_url="https://pimeyes.com",
+        style="search", kind="face_search",
+    ),
+    "lenso": ProviderSpec(
+        id="lenso",
+        name="Lenso.ai (yüz+nesne, EU/GDPR)",
+        open_source=False, free_tier=True,
+        default_model="", models=[],
+        docs_url="https://lenso.ai",
+        key_hint="API key",
+        base_url="https://lenso.ai",
+        style="search", kind="face_search",
+    ),
+    "faceseek": ProviderSpec(
+        id="faceseek",
+        name="FaceSeek (FaceCheck+Lenso+PimEyes meta, US)",
+        open_source=False, free_tier=True,
+        default_model="", models=[],
+        docs_url="https://faceseek.online",
+        key_hint="API key",
+        base_url="https://faceseek.online",
+        style="search", kind="face_search",
+    ),
+    "tineye": ProviderSpec(
+        id="tineye",
+        name="TinEye (reverse image, CA)",
+        open_source=False, free_tier=True,
+        default_model="", models=[],
+        docs_url="https://services.tineye.com",
+        key_hint="API key",
+        base_url="https://api.tineye.com",
+        style="search", kind="face_search",
+    ),
+    "bing_visual": ProviderSpec(
+        id="bing_visual",
+        name="Bing Visual Search (reverse image, US)",
+        open_source=False, free_tier=True,
+        default_model="", models=[],
+        docs_url="https://learn.microsoft.com/bing/search-apis/bing-visual-search",
+        key_hint="Azure Bing Search subscription key",
+        base_url="https://api.bing.microsoft.com/v7.0/images/visualsearch",
+        style="search", kind="face_search",
+    ),
+    "google_vision": ProviderSpec(
+        id="google_vision",
+        name="Google Cloud Vision (web detection, US)",
+        open_source=False, free_tier=True,
+        default_model="", models=[],
+        docs_url="https://cloud.google.com/vision/docs",
+        key_hint="GCP API key (Vision API enabled)",
+        base_url="https://vision.googleapis.com/v1/images:annotate",
+        style="search", kind="face_search",
+    ),
+    "saucenao": ProviderSpec(
+        id="saucenao",
+        name="SauceNAO (sanat/anime reverse image, US)",
+        open_source=False, free_tier=True,
+        default_model="", models=[],
+        docs_url="https://saucenao.com/user.php?page=search-api",
+        key_hint="opsiyonel — key olmadan da çalışır, key varsa rate limit yumuşak",
+        base_url="https://saucenao.com",
+        style="search", kind="face_search",
+    ),
 }
 
 
@@ -202,7 +284,11 @@ def llm_providers() -> list[ProviderSpec]:
 
 
 def search_providers() -> list[ProviderSpec]:
-    return [p for p in PROVIDERS.values() if p.kind == "search"]
+    return [p for p in PROVIDERS.values() if p.kind in ("search", "face_search")]
+
+
+def face_search_providers() -> list[ProviderSpec]:
+    return [p for p in PROVIDERS.values() if p.kind == "face_search"]
 
 
 def default_model_for(provider_id: str) -> str:

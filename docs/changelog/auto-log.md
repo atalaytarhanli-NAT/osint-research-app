@@ -13,3 +13,8 @@
 
 - **Son commit:** 45acae2 — fix: PDF rapor — server-side render (xhtml2pdf) ile gerçek belge
 - **Working tree:** (working tree clean)
+
+## 2026-05-02T15:04:55Z
+
+- **Son commit:** 758b19f — fix: PDF Türkçe karakter (DejaVu Sans) + filter wiki AND check
+- **Working tree:** (working tree clean)

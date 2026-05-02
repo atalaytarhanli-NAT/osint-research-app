@@ -16,15 +16,21 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Optional
 from urllib.parse import quote_plus
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, HttpUrl
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
-from ..models import User
+from ..crypto import decrypt
+from ..database import get_db
+from ..face_search import AdapterOrchestrator
+from ..models import ApiKey, SystemApiKey, User
 from ..osint.exif_extract import extract_exif
 
 
@@ -189,3 +195,150 @@ async def reverse_by_upload(
             + ". Görsel URL'sini biliyorsan onu yapıştırarak ters arama yapabilirsin."
         ),
     )
+
+
+# ===== Face / Reverse Image Search (10 dış adaptör) =====
+
+
+_FACE_ADAPTER_PROVIDER_IDS = (
+    "facecheck", "pimeyes", "lenso", "faceseek", "tineye",
+    "bing_visual", "google_vision", "saucenao",
+)
+
+
+def _collect_face_keys(user_id: int, db: Session) -> dict[str, str | None]:
+    """User key öncelikli, sonra sistem key, sonra env var. Her adaptör için."""
+    user_keys = {
+        k.provider: decrypt(k.encrypted_value)
+        for k in db.scalars(select(ApiKey).where(ApiKey.user_id == user_id)).all()
+    }
+    sys_keys = {
+        r.provider: decrypt(r.encrypted_value)
+        for r in db.scalars(
+            select(SystemApiKey).where(SystemApiKey.enabled == True)  # noqa
+        ).all()
+    }
+    out: dict[str, str | None] = {}
+    for pid in _FACE_ADAPTER_PROVIDER_IDS:
+        out[pid] = (
+            user_keys.get(pid)
+            or sys_keys.get(pid)
+            or os.environ.get(f"APP_{pid.upper()}_API_KEY")
+            or None
+        )
+    return out
+
+
+@router.get("/face-search/adapters")
+def list_face_adapters(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Yapılandırılmış (etkin) yüz/görsel arama adaptörlerini listele."""
+    keys = _collect_face_keys(user.id, db)
+    orch = AdapterOrchestrator(api_keys=keys)
+    return orch.available
+
+
+@router.post("/face-search")
+async def face_search(
+    image: UploadFile = File(...),
+    adapters: Optional[str] = Form(
+        None,
+        description="Virgülle ayrılmış adaptör listesi. Boş ise tüm etkinler kullanılır.",
+    ),
+    timeout_seconds: int = Form(120, ge=10, le=600),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Yüz/görsel ile dış servislerde paralel arama (10 adaptör destekli).
+
+    UYARI (KVKK): Bu sorgu görseli ABD/AB/RU sunucularına gönderir. Açık rıza
+    veya meşru menfaat dayanağı şart. Yandex/Search4Faces (RU) varsayılan
+    kapalı — hukuki onay sonrası key girerek aktif edilir.
+    """
+    # Image okuma
+    if image.content_type and not (
+        image.content_type.startswith(ALLOWED_MIME_PREFIX)
+        or image.content_type == "application/octet-stream"
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Sadece görsel dosyaları kabul edilir (MIME: {image.content_type}).",
+        )
+    content = await image.read()
+    if len(content) > MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Dosya çok büyük: {len(content) / 1_048_576:.1f} MB (maksimum 10 MB).",
+        )
+    if len(content) < 32:
+        raise HTTPException(status_code=400, detail="Dosya boş veya çok küçük.")
+
+    # API key'leri topla → orchestrator'ı initialize et
+    keys = _collect_face_keys(user.id, db)
+    orch = AdapterOrchestrator(api_keys=keys)
+
+    # Adaptör seçimi
+    adapter_list: list[str] | None = None
+    if adapters:
+        adapter_list = [a.strip() for a in adapters.split(",") if a.strip()]
+
+    # EXIF her zaman çıkarılır
+    exif_data = extract_exif(content)
+
+    # Paralel arama
+    report = await orch.search_all(
+        image_bytes=content,
+        adapters=adapter_list,
+        timeout_seconds=timeout_seconds,
+    )
+
+    log.info(
+        "face_search user=%s adapters=%s success=%s failed=%s matches=%d elapsed=%dms",
+        user.id, report.requested_adapters, report.successful,
+        list(report.failed.keys()), report.total_matches, report.total_elapsed_ms,
+    )
+
+    return {
+        "exif": exif_data,
+        "requested_adapters": report.requested_adapters,
+        "successful": report.successful,
+        "failed": report.failed,
+        "total_matches": report.total_matches,
+        "total_elapsed_ms": report.total_elapsed_ms,
+        "aggregated": [
+            {
+                "url": r.url,
+                "domain": r.domain,
+                "title": r.title,
+                "sources": r.sources,
+                "scores": r.scores,
+                "consensus_score": r.consensus_score,
+                "confidence": r.confidence.value,
+                "thumbnails": r.thumbnails[:3],
+            }
+            for r in report.aggregated[:50]
+        ],
+        "per_adapter": [
+            {
+                "source": resp.source,
+                "success": resp.success,
+                "error": resp.error,
+                "matches_count": len(resp.matches),
+                "elapsed_ms": resp.elapsed_ms,
+                "matches": [
+                    {
+                        "url": m.url,
+                        "score": m.score,
+                        "confidence": m.confidence.value,
+                        "title": m.title,
+                        "domain": m.domain,
+                        "thumbnail_url": m.thumbnail_url,
+                    }
+                    for m in resp.matches[:20]
+                ],
+            }
+            for resp in report.raw_responses
+        ],
+    }

@@ -678,6 +678,76 @@
                   </div>
                 </template>
                 <div x-show="imgExif && !imgExif.has_exif" class="mt-2 text-[11px] text-slate-400 italic">EXIF bulunamadı (silinmiş veya hiç yoktu).</div>
+                <!-- Face Search butonu -->
+                <button x-show="imgFile" @click="runFaceSearch()"
+                  :disabled="faceSearchBusy"
+                  :class="faceSearchBusy ? 'animate-pulse cursor-not-allowed' : 'hover:bg-violet-100'"
+                  class="mt-2 w-full text-[11px] rounded-lg ring-1 ring-violet-300 bg-violet-50 text-violet-800 font-medium px-2 py-1.5 disabled:opacity-50">
+                  <span x-text="faceSearchBusy ? '🔍 Aranıyor (≤2 dk)...' : '🔍 Yüz Araması (10 dış adaptör)'"></span>
+                </button>
+                <p x-show="!imgFile" class="mt-2 text-[10px] text-slate-400 italic">Önce bir görsel yükle, sonra yüz araması yapabilirsin.</p>
+              </div>
+            </div>
+
+            <!-- Face Search sonuçları paneli -->
+            <div x-show="faceResults" class="rounded-2xl bg-white ring-1 ring-violet-200 p-4 mt-3">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="text-[11px] uppercase tracking-widest text-violet-700 font-semibold">🔍 Yüz/Görsel Arama Sonuçları</div>
+                <span class="text-[10px] text-slate-400 font-mono ml-auto">
+                  <span x-text="faceResults?.successful?.length || 0"></span> başarılı /
+                  <span x-text="Object.keys(faceResults?.failed || {}).length"></span> hata /
+                  <span x-text="faceResults?.total_matches || 0"></span> eşleşme
+                </span>
+              </div>
+
+              <!-- Adaptör durumu -->
+              <div class="flex flex-wrap gap-1 mb-3">
+                <template x-for="resp in (faceResults?.per_adapter || [])" :key="resp.source">
+                  <span class="text-[10px] px-1.5 py-0.5 rounded font-mono"
+                    :class="resp.success ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'"
+                    :title="resp.error || `${resp.matches_count} eşleşme, ${resp.elapsed_ms}ms`">
+                    <span x-text="resp.source"></span>
+                    <span x-show="resp.success">: <span x-text="resp.matches_count"></span></span>
+                    <span x-show="!resp.success">⚠</span>
+                  </span>
+                </template>
+              </div>
+
+              <!-- Boş sonuç -->
+              <div x-show="(faceResults?.aggregated || []).length === 0" class="rounded-lg bg-amber-50 ring-1 ring-amber-200 p-3 text-xs text-amber-800">
+                ⚠ Hiçbir eşleşme bulunamadı. Settings'te FaceCheck/TinEye/SauceNAO key girersen sonuçlar gelir
+                (en az SauceNAO ücretsiz çalışır).
+              </div>
+
+              <!-- Aggregated sonuçlar -->
+              <ul x-show="(faceResults?.aggregated || []).length > 0" class="space-y-2">
+                <template x-for="(r, i) in (faceResults?.aggregated || []).slice(0, 15)" :key="i">
+                  <li class="rounded-lg bg-slate-50 ring-1 ring-slate-200 p-2.5">
+                    <div class="flex items-start gap-2">
+                      <template x-if="r.thumbnails && r.thumbnails.length">
+                        <img :src="r.thumbnails[0]" class="size-12 object-cover rounded ring-1 ring-slate-200 shrink-0" referrerpolicy="no-referrer" />
+                      </template>
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                          <span class="text-[10px] font-mono px-1.5 py-0.5 rounded" :class="faceConfidenceClass(r.confidence)" x-text="r.confidence"></span>
+                          <span class="text-[11px] font-mono font-bold text-slate-700">Skor: <span x-text="r.consensus_score?.toFixed(0) || 0"></span></span>
+                          <template x-for="(s, j) in (r.sources || [])" :key="j">
+                            <span class="text-[10px] px-1 py-0.5 rounded bg-violet-100 text-violet-700 font-mono" x-text="s"></span>
+                          </template>
+                        </div>
+                        <a :href="r.url" target="_blank" rel="noopener" class="mt-1 block text-xs text-brand-700 hover:underline truncate" x-text="r.title || r.url"></a>
+                        <div class="text-[10px] text-slate-400 font-mono truncate" x-text="r.domain || r.url"></div>
+                      </div>
+                    </div>
+                  </li>
+                </template>
+              </ul>
+
+              <!-- KVKK uyarısı -->
+              <div class="mt-3 rounded-lg bg-slate-50 ring-1 ring-slate-200 p-2 text-[10px] text-slate-500">
+                ⚖ <strong>KVKK uyarısı:</strong> Yüz araması görseli ABD/AB sunucularına gönderir.
+                Açık rıza veya meşru menfaat dayanağı şart. RU adaptörleri (Yandex/Search4Faces)
+                varsayılan kapalı.
               </div>
             </div>
 
@@ -707,6 +777,7 @@
     return {
       jobId, job: null, report: null, sources: [], imgUrl: '',
       imgExif: null, imgUploading: false,
+      imgFile: null, faceSearchBusy: false, faceResults: null,
       diagnostics: null, showDiag: false,
       pdfBusy: false,
       intelligenceBrief: '', renderedBrief: '',
@@ -749,6 +820,7 @@
       async uploadImage(event) {
         const file = event?.target?.files?.[0];
         if (!file) return;
+        this.imgFile = file;  // face-search'te tekrar kullanılmak üzere sakla
         this.imgUploading = true;
         this.imgExif = null;
         try {
@@ -949,6 +1021,39 @@
           `## Sonuç`, r.conclusion,
         ].join('\n');
         navigator.clipboard.writeText(md);
+      },
+      async runFaceSearch() {
+        // Yüz/görsel ile 10 dış adaptör paralel sorgulama (FaceCheck/PimEyes/
+        // TinEye/Bing Visual/Google Vision/SauceNAO/Lenso/FaceSeek + Yandex/
+        // Search4Faces). Settings'te key girilen adaptörler aktif.
+        if (!this.imgFile || this.faceSearchBusy) return;
+        this.faceSearchBusy = true;
+        this.faceResults = null;
+        try {
+          const fd = new FormData();
+          fd.append('image', this.imgFile);
+          const r = await fetch('/api/image/face-search', {
+            method: 'POST', body: fd, credentials: 'include',
+          });
+          if (!r.ok) {
+            const text = await r.text().catch(() => '');
+            throw new Error(`HTTP ${r.status}: ${text.slice(0, 200)}`);
+          }
+          this.faceResults = await r.json();
+        } catch (e) {
+          alert('Yüz araması hata aldı: ' + (e?.message || e));
+        } finally {
+          this.faceSearchBusy = false;
+        }
+      },
+      faceConfidenceClass(c) {
+        return ({
+          'CERTAIN':    'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300',
+          'CONFIDENT':  'bg-brand-100 text-brand-800 ring-1 ring-brand-300',
+          'UNCERTAIN':  'bg-amber-100 text-amber-800 ring-1 ring-amber-300',
+          'WEAK':       'bg-orange-100 text-orange-800 ring-1 ring-orange-300',
+          'NONE':       'bg-slate-100 text-slate-500 ring-1 ring-slate-200',
+        })[c] || 'bg-slate-100 text-slate-500';
       },
       async downloadPdf() {
         // Server-side render: text-search'lü, sayfa-uyumlu, profesyonel rapor
