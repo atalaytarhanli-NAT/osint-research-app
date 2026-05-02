@@ -20,25 +20,45 @@ from .providers import call_llm
 log = logging.getLogger("analyzer")
 
 
-SYSTEM_PROMPT = """Sen bir OSINT analistisin. Sana hedef konu hakkında açık kaynaklardan derlenmiş ham veri verilecek. Aşağıdaki kesin JSON şemasında SADECE TÜRKÇE rapor üreteceksin. Diğer dillerden tek kelime karıştırma. Şu kurallara KESİNLİKLE uyacaksın:
+SYSTEM_PROMPT = """Sen NATO OSINT Handbook (2024 revizyonu), IC Directive 203 (Analytic Standards) ve OWASP OSINT Framework'ünü baz alan kıdemli bir OSINT analistisin. Sana hedef konu hakkında açık kaynaklardan derlenmiş ham veri verilecek. Aşağıdaki kesin JSON şemasında SADECE TÜRKÇE rapor üreteceksin. Diğer dillerden tek kelime karıştırma.
 
-- KENDİ ÖN BİLGİLERİNİ KULLANMA. "Atalay Tarhanlı kimdir biliyorum"u unut. SADECE aşağıda verilen kaynaklarda yazılana dayan.
+DİSİPLİN KURALLARI (KESİN):
+- KENDİ ÖN BİLGİLERİNİ KULLANMA. SADECE aşağıda verilen kaynaklarda yazılana dayan. Training verisinden uydurma yapma.
 - Bir iddiayı raporda kullanmadan önce hangi kaynak indeksinden geldiğini `source_indices` listesinde belirt. Boş `source_indices` ile iddia yazmak YASAK.
-- Eğer kaynaklar listesi BOŞ ise: overview="Açık kaynaklarda yeterli veri bulunamadı.", top_findings=[], cross_verification=[], identity.definition="Veri yetersiz.", diğer tüm alanları minimum default ile doldur ve risk_level="low", confidence=0.05.
-- ÇAPRAZ DOĞRULAMA: Bir iddiayı kaç bağımsız kaynak (farklı domain) destekliyor? 1 → "single", 2 → "double", 3+ → "triple", çelişen → "conflicting".
-- Doğrulanmış / iddia / söylenti / yorum ayrımına dikkat et. Belirsizse cümlede "(iddia)" veya "(doğrulanmamış)" parantezi koy.
+- Veri yoksa "intelligence gap" olarak beyan et; spekülasyon yapacaksan "(spekülasyon)" etiketi koy.
 - Çıktı YALNIZCA geçerli JSON, ek açıklama YAZMA, kod bloğu (```) kullanma.
 
-JSON şeması:
+ÇAPRAZ DOĞRULAMA: 1 farklı domain → "single", 2 → "double", 3+ → "triple", çelişen → "conflicting".
+
+ADMIRALTY CODE (her finding için): Kaynak güvenilirliği A-F × Bilgi doğruluğu 1-6.
+- Kaynak güv: A=tamamen güvenilir (resmi/akademik/ana kaynak), B=genelde güvenilir (büyük yayın), C=oldukça güvenilir (sektör/uzman), D=genelde güvenilmez, E=güvenilmez, F=değerlendirilemiyor.
+- Bilgi doğr: 1=başka kaynaklarca tamamen doğrulanmış, 2=büyük olasılıkla doğru, 3=muhtemelen doğru, 4=şüpheli, 5=olası değil, 6=değerlendirilemiyor.
+- Kod örneği: "B2" = büyük yayın, büyük olasılıkla doğru.
+
+ACH (Çakışan Hipotezler Analizi): En az 2 alternatif açıklama düşün, kanıt matrisiyle karşılaştır, gerekçeli tercihte bulun. Tek hipotezle bitirme.
+
+RİSK SKORLAMA: Likelihood (1-5) × Impact (1-5) = score. Kategoriler: operational, legal, reputation, financial, cyber.
+
+KIRMIZI ÇİZGİLER (otomatik beyan): pretexting/yetkisiz sistem erişimi/hassas özel veri (rıza yok)/stalking/fiziksel zarar/kimlik kırma/telif ihlali — yapılmadı.
+
+EĞER kaynaklar listesi BOŞ ise: overview="Açık kaynaklarda yeterli veri bulunamadı.", tüm liste alanları boş, scalar alanlar minimum default, risk_level="low", confidence=0.05.
+
+JSON ŞEMASI:
 {
   "executive_summary": {
-    "overview": "konu kısa özeti (max 4 cümle, [N] indeksli atıflar kullan)",
+    "overview": "BLUF (Bottom Line Up Front) — max 4 cümle, [N] indeksli atıflarla",
     "top_findings": [
       {"claim": "bulgu cümlesi", "source_indices": [0,3,7], "verification": "triple|double|single|conflicting"}
     ],
     "confidence": 0.0-1.0,
     "risk_level": "low|medium|high"
   },
+  "pir_matrix": [
+    {"id": "PIR-1", "question": "araştırmanın cevaplaması gereken kritik soru", "answer": "kaynaklara dayanan cevap veya 'intelligence gap'", "admiralty": "B2", "source_indices": [0,5]}
+  ],
+  "admiralty_findings": [
+    {"finding": "kanıtlanmış gözlem cümlesi", "source_reliability": "A|B|C|D|E|F", "info_credibility": "1|2|3|4|5|6", "code": "B2", "source_indices": [0,3], "vector": "PERSINT|CORPINT|LINKINT|GENERAL"}
+  ],
   "cross_verification": [
     {"claim": "iddia/bulgu", "level": "triple|double|single|conflicting", "source_indices": [0,3,7], "source_kinds": ["wiki","news","code"]}
   ],
@@ -73,10 +93,30 @@ JSON şeması:
     "commercial": "low|medium|high — kısa açıklama",
     "reputation": "low|medium|high — kısa açıklama"
   },
+  "risk_matrix": [
+    {"risk": "spesifik risk tanımı", "likelihood": 1-5, "impact": 1-5, "score": 1-25, "category": "operational|legal|reputation|financial|cyber", "mitigation": "öneri", "source_indices": [0]}
+  ],
+  "ach_analysis": {
+    "hypotheses": [
+      {"id": "H1", "statement": "alternatif açıklama 1", "supporting": [0,3], "contradicting": [5], "verdict": "destekli|zayıf|elendi"},
+      {"id": "H2", "statement": "alternatif açıklama 2", "supporting": [], "contradicting": [0,3], "verdict": "destekli|zayıf|elendi"}
+    ],
+    "preferred": "H1",
+    "rationale": "neden H1 — kanıt ağırlığı"
+  },
+  "pivot_suggestions": [
+    {"new_seed": "yeni arama anahtarı/identifier", "rationale": "neden bu pivot — hangi sinyal", "tools": ["wayback", "crt.sh", "github", "yandex"]}
+  ],
+  "intelligence_gaps": [
+    {"gap": "cevap bulunamayan soru/eksik veri", "why_important": "neden kritik", "follow_up": "tavsiye edilen takip eylemi"}
+  ],
+  "legal_ethical_notice": "Bu rapor yalnızca açık kaynak (OSINT) yöntemiyle, NATO OSINT Handbook ve IC Directive 203 standartlarına uygun üretildi. Pretexting, yetkisiz sistem erişimi, hassas özel veriler ve stalking pattern'i yoktur.",
   "open_questions": ["açıkta kalan soru 1", "..."],
   "next_steps": ["öneri 1", "öneri 2"],
   "conclusion": "net sonuç — 2-4 cümle"
-}"""
+}
+
+KAÇINMA: pir_matrix en az 3 öğe, admiralty_findings en az 3 öğe (kaynak varsa), ach_analysis en az 2 hipotez, risk_matrix en az 2 risk, intelligence_gaps en az 1 öğe (her raporda mutlaka var). Hiçbir alanı atlama; veri yoksa boş liste/dizi döndür."""
 
 
 def _user_prompt(target: str, kind: str, sources: list[dict]) -> str:
@@ -137,6 +177,14 @@ async def build_report(
     return report
 
 
+LEGAL_ETHICAL_NOTICE = (
+    "Bu rapor yalnızca açık kaynak (OSINT) yöntemiyle, NATO OSINT Handbook (2024) ve "
+    "IC Directive 203 standartlarına uygun üretildi. Pretexting, yetkisiz sistem "
+    "erişimi, hassas özel veriler (rıza yok) ve stalking pattern'i yoktur. Sızıntı "
+    "veri tabanlarına içerik bazlı erişim YAPILMAMIŞTIR."
+)
+
+
 def _empty_report(target: str, kind: str) -> dict[str, Any]:
     return {
         "executive_summary": {
@@ -149,6 +197,8 @@ def _empty_report(target: str, kind: str) -> dict[str, Any]:
             "confidence": 0.05,
             "risk_level": "low",
         },
+        "pir_matrix": [],
+        "admiralty_findings": [],
         "cross_verification": [],
         "identity": {
             "definition": "Veri yetersiz.",
@@ -177,6 +227,32 @@ def _empty_report(target: str, kind: str) -> dict[str, Any]:
             "commercial": "değerlendirilemedi — kaynak yok",
             "reputation": "değerlendirilemedi — kaynak yok",
         },
+        "risk_matrix": [],
+        "ach_analysis": {
+            "hypotheses": [],
+            "preferred": "",
+            "rationale": "Kaynak yok — hipotez analizi yapılamadı.",
+        },
+        "pivot_suggestions": [
+            {
+                "new_seed": f"\"{target}\" + kurum/şehir adı",
+                "rationale": "Eş isim olasılığı düşürülür, sinyal/gürültü oranı artar.",
+                "tools": ["web", "wiki", "news"],
+            },
+            {
+                "new_seed": f"@{target.lower().replace(' ', '')}",
+                "rationale": "Sosyal medya handle olarak ayrı arama; profil varlığı yakalar.",
+                "tools": ["social_probe", "github"],
+            },
+        ],
+        "intelligence_gaps": [
+            {
+                "gap": "Hedefe dair açık webde hiç doğrulanabilir kayıt bulunamadı.",
+                "why_important": "İzleyici verisi olmadan kimlik teyidi yapılamaz.",
+                "follow_up": "Daha spesifik seed (e-posta, kullanıcı adı, kurum, lokasyon) ile yeniden ara.",
+            }
+        ],
+        "legal_ethical_notice": LEGAL_ETHICAL_NOTICE,
         "open_questions": [
             "Hedef adının yazımı doğru mu?",
             "Daha spesifik bir bağlam (kurum, lokasyon, sektör) eklenebilir mi?",
@@ -198,11 +274,17 @@ def _empty_report(target: str, kind: str) -> dict[str, Any]:
 
 def _strip_unsupported_claims(data: dict, source_count: int) -> dict:
     """LLM bazen kaynaksız iddia üretir. Bu fonksiyon source_indices'i geçersiz veya
-    boş olan top_findings/cross_verification/timeline/relations entry'lerini ayıklar."""
+    boş olan kayıtları ayıklar. NATO/IC alanları için de uygulanır."""
 
     def valid(idxs):
         if not idxs:
             return False
+        return all(isinstance(i, int) and 0 <= i < source_count for i in idxs)
+
+    def valid_or_empty(idxs):
+        # ACH supporting/contradicting boş olabilir (alternatif hipotezde kanıt yok)
+        if not idxs:
+            return True
         return all(isinstance(i, int) and 0 <= i < source_count for i in idxs)
 
     es = data.get("executive_summary", {})
@@ -211,21 +293,25 @@ def _strip_unsupported_claims(data: dict, source_count: int) -> dict:
             f for f in es["top_findings"]
             if not (isinstance(f, dict) and not valid(f.get("source_indices")))
         ]
-    cv = data.get("cross_verification") or []
-    if isinstance(cv, list):
-        data["cross_verification"] = [
-            v for v in cv if isinstance(v, dict) and valid(v.get("source_indices"))
-        ]
-    tl = data.get("timeline") or []
-    if isinstance(tl, list):
-        data["timeline"] = [
-            t for t in tl if isinstance(t, dict) and valid(t.get("source_indices"))
-        ]
-    rel = data.get("relations") or []
-    if isinstance(rel, list):
-        data["relations"] = [
-            r for r in rel if isinstance(r, dict) and valid(r.get("source_indices"))
-        ]
+    for key in ("cross_verification", "timeline", "relations", "pir_matrix",
+                "admiralty_findings", "risk_matrix"):
+        items = data.get(key) or []
+        if isinstance(items, list):
+            data[key] = [
+                v for v in items if isinstance(v, dict) and valid(v.get("source_indices"))
+            ]
+    # ACH: hypotheses listesindeki supporting/contradicting indekslerini doğrula
+    ach = data.get("ach_analysis") or {}
+    if isinstance(ach, dict):
+        hyps = ach.get("hypotheses") or []
+        if isinstance(hyps, list):
+            ach["hypotheses"] = [
+                h for h in hyps
+                if isinstance(h, dict)
+                and valid_or_empty(h.get("supporting"))
+                and valid_or_empty(h.get("contradicting"))
+            ]
+            data["ach_analysis"] = ach
     return data
 
 
@@ -363,6 +449,193 @@ def _summarize_group(sources: list[dict], indices: list[int], limit: int = 4) ->
     return "; ".join(titles) + (f" (+{len(indices) - limit} daha)" if len(indices) > limit else "")
 
 
+_KIND_TO_ADMIRALTY = {
+    "wiki": ("B", "2", "GENERAL"),
+    "news": ("B", "3", "GENERAL"),
+    "code": ("A", "1", "PERSINT"),
+    "profile": ("D", "5", "PERSINT"),
+    "social": ("D", "4", "PERSINT"),
+    "archive": ("B", "2", "GENERAL"),
+    "web": ("F", "4", "GENERAL"),
+}
+
+
+def _rule_based_admiralty(sources: list[dict], limit: int = 8) -> list[dict]:
+    """Kaynaklara göre kaba Admiralty kodları üret. LLM yokken minimum izlenebilirlik."""
+    findings: list[dict] = []
+    seen_kinds: set[str] = set()
+    for i, s in enumerate(sources):
+        kind = s.get("kind", "web")
+        if kind in seen_kinds and len(findings) >= 3:
+            continue
+        seen_kinds.add(kind)
+        rel, cred, vector = _KIND_TO_ADMIRALTY.get(kind, ("F", "6", "GENERAL"))
+        title = s.get("title") or s.get("url", "")
+        findings.append({
+            "finding": f"{kind}: {title}",
+            "source_reliability": rel,
+            "info_credibility": cred,
+            "code": f"{rel}{cred}",
+            "source_indices": [i],
+            "vector": vector,
+        })
+        if len(findings) >= limit:
+            break
+    return findings
+
+
+def _rule_based_risk_matrix(sources: list[dict], groups: dict[str, list[int]], risk_score: float) -> list[dict]:
+    matrix: list[dict] = []
+    profile_count = len(groups.get("profile", []))
+    if profile_count >= 4:
+        matrix.append({
+            "risk": f"Geniş sosyal medya ayak izi ({profile_count} profil) — sosyal mühendislik yüzeyi",
+            "likelihood": 4,
+            "impact": 3,
+            "score": 12,
+            "category": "operational",
+            "mitigation": "Profil ayarlarını sıkılaştır, eski profilleri sil/anonimleştir.",
+            "source_indices": groups.get("profile", [])[:3],
+        })
+    if any("breach" in (s.get("snippet") or "").lower() for s in sources):
+        leak_indices = [i for i, s in enumerate(sources) if "breach" in (s.get("snippet") or "").lower()][:3]
+        matrix.append({
+            "risk": "Veri ihlali sinyali tespit edildi (kaynak içeriğinde 'breach' terimi)",
+            "likelihood": 5,
+            "impact": 5,
+            "score": 25,
+            "category": "cyber",
+            "mitigation": "Şifre döngüsü zorla, MFA aktif et, HIBP üzerinden ilgili e-postaları kontrol et.",
+            "source_indices": leak_indices,
+        })
+    if any(
+        kw in (s.get("title", "") + s.get("snippet", "")).lower()
+        for kw in ["fraud", "lawsuit", "scam", "dolandırıcı", "sahte", "dava"]
+        for s in sources
+    ):
+        matrix.append({
+            "risk": "Hukuki/uyuşmazlık sinyali (kaynaklarda dava/dolandırıcılık geçiyor)",
+            "likelihood": 3,
+            "impact": 4,
+            "score": 12,
+            "category": "legal",
+            "mitigation": "İlgili davaların tarafları/durumu ayrıca doğrulanmalı.",
+            "source_indices": [
+                i for i, s in enumerate(sources)
+                if any(kw in (s.get("title", "") + s.get("snippet", "")).lower()
+                       for kw in ["fraud", "lawsuit", "scam", "dolandırıcı", "sahte", "dava"])
+            ][:3],
+        })
+    if not matrix:
+        matrix.append({
+            "risk": "Bilinen yüksek riskli sinyal yok — kaynak şu anda zararsız görünüyor",
+            "likelihood": 1,
+            "impact": 2,
+            "score": 2,
+            "category": "operational",
+            "mitigation": "Periyodik tekrar tarama (3 ay) önerilir.",
+            "source_indices": [0] if sources else [],
+        })
+    return matrix
+
+
+def _rule_based_pir(target: str, sources: list[dict], groups: dict[str, list[int]]) -> list[dict]:
+    pir: list[dict] = []
+    web_idx = groups.get("web", []) + groups.get("wiki", [])
+    if web_idx:
+        pir.append({
+            "id": "PIR-1",
+            "question": f"'{target}' kim/ne olarak tanımlanıyor?",
+            "answer": (sources[web_idx[0]].get("snippet") or sources[web_idx[0]].get("title") or "—")[:280],
+            "admiralty": "C3" if len(web_idx) < 3 else "B2",
+            "source_indices": web_idx[:3],
+        })
+    profile_idx = groups.get("profile", [])
+    if profile_idx:
+        platforms = sorted({(sources[i].get("source") or "").replace("social:", "") for i in profile_idx})
+        pir.append({
+            "id": f"PIR-{len(pir)+1}",
+            "question": "Hangi sosyal medya platformlarında varlığı var?",
+            "answer": f"{len(platforms)} platform: {', '.join(list(platforms)[:8])}",
+            "admiralty": "D5",
+            "source_indices": profile_idx[:5],
+        })
+    news_idx = groups.get("news", [])
+    if news_idx:
+        pir.append({
+            "id": f"PIR-{len(pir)+1}",
+            "question": "Haber kaynaklarında nasıl ele alınıyor?",
+            "answer": f"{len(news_idx)} haberde geçiyor: {sources[news_idx[0]].get('title', '')[:140]}",
+            "admiralty": "B3",
+            "source_indices": news_idx[:3],
+        })
+    archive_idx = groups.get("archive", [])
+    if archive_idx:
+        pir.append({
+            "id": f"PIR-{len(pir)+1}",
+            "question": "Web arşivinde geçmiş izi/değişiklik var mı?",
+            "answer": f"{len(archive_idx)} arşiv kaydı tespit edildi (Wayback Machine).",
+            "admiralty": "B2",
+            "source_indices": archive_idx[:3],
+        })
+    return pir
+
+
+def _rule_based_ach(target: str, n: int) -> dict:
+    if n < 4:
+        return {
+            "hypotheses": [],
+            "preferred": "",
+            "rationale": "Kaynak sayısı çok az — alternatif hipotez analizi anlamlı değil.",
+        }
+    return {
+        "hypotheses": [
+            {
+                "id": "H1",
+                "statement": f"Toplanan kaynaklar tek bir '{target}' kişisini/kurumunu işaret ediyor.",
+                "supporting": list(range(min(3, n))),
+                "contradicting": [],
+                "verdict": "destekli",
+            },
+            {
+                "id": "H2",
+                "statement": f"'{target}' eş isim çakışmasıyla birden fazla farklı varlığı işaret ediyor olabilir.",
+                "supporting": [],
+                "contradicting": list(range(min(3, n))),
+                "verdict": "zayıf",
+            },
+        ],
+        "preferred": "H1",
+        "rationale": (
+            "Kural-bazlı sezgisel: kaynakların büyük çoğunluğu aynı bağlamı (başlık/snippet) "
+            "paylaşıyorsa H1 tercih edilir. LLM analiziyle daha güvenilir hale gelir."
+        ),
+    }
+
+
+def _rule_based_pivots(target: str, groups: dict[str, list[int]]) -> list[dict]:
+    pivots: list[dict] = []
+    if "wayback" not in groups and "archive" not in groups:
+        pivots.append({
+            "new_seed": target,
+            "rationale": "Henüz arşiv araması yapılmamış — silinmiş içerik için Wayback denenmeli.",
+            "tools": ["wayback"],
+        })
+    if "code" not in groups:
+        pivots.append({
+            "new_seed": target.lower().replace(" ", ""),
+            "rationale": "GitHub/HN üzerinden teknik iz aranabilir (kod tabanı, issue, mention).",
+            "tools": ["github", "hn"],
+        })
+    if "profile" not in groups:
+        pivots.append({
+            "new_seed": target.lower().replace(" ", ""),
+            "rationale": "Sosyal medya kullanıcı adı taraması yapılmamış — Sherlock-style kontrol önerilir.",
+            "tools": ["social_probe"],
+        })
+    return pivots
+
+
 def _rule_based_report(target: str, kind: str, sources: list[dict]) -> dict[str, Any]:
     n = len(sources)
     groups = _classify_groups(sources)
@@ -425,6 +698,8 @@ def _rule_based_report(target: str, kind: str, sources: list[dict]) -> dict[str,
             "confidence": confidence,
             "risk_level": risk_level,
         },
+        "pir_matrix": _rule_based_pir(target, sources, groups),
+        "admiralty_findings": _rule_based_admiralty(sources),
         "cross_verification": cross_verification,
         "identity": {
             "definition": (
@@ -471,6 +746,17 @@ def _rule_based_report(target: str, kind: str, sources: list[dict]) -> dict[str,
             "commercial": f"{risk_level} — kural-bazlı sezgisel skor",
             "reputation": f"{risk_level} — kural-bazlı sezgisel skor",
         },
+        "risk_matrix": _rule_based_risk_matrix(sources, groups, risk_score),
+        "ach_analysis": _rule_based_ach(target, n),
+        "pivot_suggestions": _rule_based_pivots(target, groups),
+        "intelligence_gaps": [
+            {
+                "gap": "LLM sentezi yapılmadı — yapısal kanıt değerlendirmesi yüzeyseldir.",
+                "why_important": "ACH ve Admiralty kodlaması için bağlam analizi gerekir; kural-bazlı mod sadece kategorik kestirim yapar.",
+                "follow_up": "Settings → API anahtarı ekleyin (Groq/HuggingFace ücretsiz seviyeler mevcut).",
+            }
+        ],
+        "legal_ethical_notice": LEGAL_ETHICAL_NOTICE,
         "open_questions": [
             "Kişi/kurum kimlik onayı ek belge ile yapılmalı.",
             "Eş isim çakışması varsa en az 2 farklı doğrulama gerekir.",
