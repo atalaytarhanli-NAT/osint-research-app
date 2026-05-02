@@ -16,7 +16,12 @@ log = logging.getLogger("osint.wiki")
 async def lookup_wikipedia(query: str, lang: str = "en") -> list[SourceResult]:
     """Search Wikipedia for the term and return the top summary if found."""
     results: list[SourceResult] = []
-    headers = {"User-Agent": "OsintResearchApp/1.0 (research)"}
+    # Wikipedia API requires a contact / descriptive User-Agent per their UA policy.
+    # Without this they 403 some IPs.
+    headers = {
+        "User-Agent": "OsintResearchApp/1.0 (https://osint-research-app.onrender.com; contact: atalay.tarhanli@gmail.com) httpx/0.28",
+        "Accept": "application/json",
+    }
 
     try:
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=headers) as c:

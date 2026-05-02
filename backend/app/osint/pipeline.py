@@ -17,12 +17,15 @@ from .crtsh import search_crtsh
 from .gdelt import search_gdelt
 from .github_oss import search_github
 from .hackernews import search_hn
+from .mojeek_search import search_mojeek
+from .person_enrich import enrich_with_variations
 from .reddit import search_reddit
 from .social_probe import probe_username
 from .wayback import wayback_lookup
 from .web_search import search_news, search_web
 from .wikidata import search_wikidata
 from .wikipedia import lookup_wikipedia
+from .yandex_search import search_yandex
 
 
 log = logging.getLogger("osint.pipeline")
@@ -58,6 +61,8 @@ async def _first_pass(target: str, kind: str) -> list[SourceResult]:
         _safe("ddg", search_web(target)),
         _safe("ddg_news", search_news(target)),
         _safe("bing", search_bing(target)),
+        _safe("yandex", search_yandex(target)),
+        _safe("mojeek", search_mojeek(target)),
         _safe("wiki_en", lookup_wikipedia(target, "en")),
         _safe("wiki_tr", lookup_wikipedia(target, "tr")),
         _safe("wikidata", search_wikidata(target)),
@@ -73,6 +78,8 @@ async def _first_pass(target: str, kind: str) -> list[SourceResult]:
         tasks.append(_safe("crtsh", search_crtsh(target)))
     if kind in ("social", "person"):
         tasks.append(_safe("social_probe", probe_username(target)))
+    if kind in ("person", "organization", "auto"):
+        tasks.append(_safe("person_enrich", enrich_with_variations(target, kind)))
 
     chunks = await asyncio.gather(*tasks)
     flat: list[SourceResult] = []
@@ -115,6 +122,7 @@ async def _second_pass(target: str, refined_queries: list[str]) -> list[SourceRe
     for q in refined_queries:
         tasks.append(_safe("ddg2", search_web(q, max_results=8)))
         tasks.append(_safe("bing2", search_bing(q, max_results=8)))
+        tasks.append(_safe("yandex2", search_yandex(q, max_results=6)))
         tasks.append(_safe("gdelt2", search_gdelt(q, max_records=8)))
     chunks = await asyncio.gather(*tasks)
     flat: list[SourceResult] = []
