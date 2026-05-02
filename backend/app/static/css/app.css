@@ -12,3 +12,31 @@ body { font-feature-settings: "cv11" 1, "ss01" 1; -webkit-tap-highlight-color: t
 
 input, select, button { -webkit-appearance: none; appearance: none; }
 button { touch-action: manipulation; }
+
+/* OSINT brief Markdown render */
+.prose-osint { line-height: 1.6; color: #1e293b; }
+.prose-osint h1 { font-size: 1.5rem; font-weight: 700; margin: 0 0 1rem; color: #0f172a; }
+.prose-osint h2 { font-size: 1.15rem; font-weight: 700; margin: 1.5rem 0 0.5rem; color: #1e293b; padding-top: 0.75rem; border-top: 1px solid #e2e8f0; }
+.prose-osint h3 { font-size: 1rem; font-weight: 600; margin: 1rem 0 0.4rem; color: #334155; }
+.prose-osint h4 { font-size: 0.92rem; font-weight: 600; margin: 0.6rem 0 0.3rem; color: #475569; }
+.prose-osint p { margin: 0.5rem 0; }
+.prose-osint ul, .prose-osint ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+.prose-osint ul { list-style: disc; }
+.prose-osint ol { list-style: decimal; }
+.prose-osint li { margin: 0.2rem 0; }
+.prose-osint strong { color: #0f172a; font-weight: 600; }
+.prose-osint code { background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.85em; color: #4338ca; }
+.prose-osint pre { background: #0f172a; color: #e2e8f0; padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; margin: 0.75rem 0; }
+.prose-osint pre code { background: transparent; color: inherit; padding: 0; }
+.prose-osint table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.88rem; }
+.prose-osint th, .prose-osint td { border: 1px solid #e2e8f0; padding: 0.4rem 0.6rem; text-align: left; vertical-align: top; }
+.prose-osint th { background: #f8fafc; font-weight: 600; color: #475569; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.prose-osint blockquote { border-left: 3px solid #6366f1; padding-left: 1rem; color: #475569; font-style: italic; margin: 0.75rem 0; }
+.prose-osint a { color: #4338ca; text-decoration: underline; word-break: break-word; }
+.prose-osint a:hover { color: #312e81; }
+.prose-osint hr { border: none; border-top: 1px solid #e2e8f0; margin: 1rem 0; }
+@media (max-width: 640px) {
+  .prose-osint { font-size: 0.92rem; }
+  .prose-osint table { font-size: 0.78rem; }
+  .prose-osint pre { font-size: 0.75rem; }
+}

@@ -30,6 +30,30 @@
         <pre class="text-xs text-rose-600/80 mt-1 whitespace-pre-wrap" x-text="job.error"></pre>
       </div>
 
+      <!-- ===== NATO/IC standardı kapsamlı Markdown brief (LLM varsa) ===== -->
+      <template x-if="job.status === 'done' && intelligenceBrief">
+        <div class="mt-6 rounded-2xl bg-gradient-to-br from-indigo-50 to-violet-50 ring-1 ring-indigo-200 overflow-hidden"
+             x-data="{open: false}">
+          <button @click="open = !open" class="w-full flex items-center justify-between gap-3 p-5 hover:bg-white/40 transition">
+            <div class="flex items-center gap-3 text-left">
+              <div class="size-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 grid place-items-center text-white font-bold text-sm shrink-0">⚡</div>
+              <div class="min-w-0">
+                <div class="text-sm font-semibold text-indigo-900">Detaylı İstihbarat Raporu (NATO/IC standardı)</div>
+                <div class="text-[11px] text-indigo-700/80 truncate">F3EAD · Admiralty Code · ACH · 13 bölüm — analyst-grade</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <button @click.stop="copyBrief()" class="text-[11px] rounded-lg ring-1 ring-indigo-300 hover:bg-white px-2 py-1 text-indigo-700">Kopyala</button>
+              <button @click.stop="downloadBrief()" class="text-[11px] rounded-lg ring-1 ring-indigo-300 hover:bg-white px-2 py-1 text-indigo-700">İndir</button>
+              <svg :class="open ? 'rotate-180' : ''" class="size-4 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </div>
+          </button>
+          <div x-show="open" x-transition class="border-t border-indigo-200 bg-white p-6">
+            <article class="prose-osint" x-html="renderedBrief"></article>
+          </div>
+        </div>
+      </template>
+
       <template x-if="job.status === 'done' && report">
         <div class="mt-6 grid lg:grid-cols-[1fr_280px] gap-5">
           <div class="space-y-4 min-w-0">
@@ -322,6 +346,7 @@
   function reportView(jobId) {
     return {
       jobId, job: null, report: null, sources: [], imgUrl: '',
+      intelligenceBrief: '', renderedBrief: '',
       kindFilter: '', showAllSources: false,
       timer: null,
       async fetch() {
@@ -330,8 +355,41 @@
           if (this.job.result) {
             this.report = this.job.result.report;
             this.sources = (this.job.result.sources || []).map((s, i) => ({...s, _idx: i}));
+            this.intelligenceBrief = this.job.result.intelligence_brief || '';
+            this.renderedBrief = this.intelligenceBrief
+              ? DOMPurify.sanitize(marked.parse(this.intelligenceBrief))
+              : '';
+            // Mermaid diyagramları varsa render
+            if (this.intelligenceBrief && window.mermaid) {
+              try {
+                window.mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+                this.$nextTick(() => {
+                  document.querySelectorAll('.prose-osint pre code.language-mermaid, .prose-osint .language-mermaid').forEach((el, i) => {
+                    const id = `mermaid-${this.jobId}-${i}`;
+                    const code = el.textContent;
+                    window.mermaid.render(id, code).then(({svg}) => {
+                      const wrap = document.createElement('div');
+                      wrap.innerHTML = svg;
+                      el.replaceWith(wrap);
+                    }).catch(() => {});
+                  });
+                });
+              } catch {}
+            }
           }
         } catch (e) {}
+      },
+      copyBrief() {
+        if (!this.intelligenceBrief) return;
+        navigator.clipboard.writeText(this.intelligenceBrief);
+      },
+      downloadBrief() {
+        if (!this.intelligenceBrief) return;
+        const blob = new Blob([this.intelligenceBrief], { type: 'text/markdown;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `osint-brief-${this.jobId}.md`;
+        a.click();
       },
       async poll() {
         await this.fetch();

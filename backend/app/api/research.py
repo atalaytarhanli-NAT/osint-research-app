@@ -17,6 +17,7 @@ from ..auth import get_current_user
 from ..crypto import decrypt
 from ..database import SessionLocal, get_db
 from ..llm.analyzer import build_report
+from ..llm.intelligence_brief import build_intelligence_brief
 from ..llm.providers import PROVIDERS
 from ..models import ApiKey, ResearchJob, SystemApiKey, User
 from ..osint.pipeline import run_pipeline
@@ -162,8 +163,28 @@ def _run_job(job_id: int) -> None:
                     model=model,
                 )
             )
+            # NATO/IC standardı kapsamlı Markdown brief — yapılandırılmış JSON
+            # raporun YANINDA, LLM varsa üretilir, UI'da ayrı bölümde gösterilir.
+            intelligence_brief = asyncio.run(
+                build_intelligence_brief(
+                    target=job.target,
+                    kind=job.kind,
+                    scope=job.scope or "all",
+                    intensity=job.intensity or "deep",
+                    sources=sources,
+                    provider_id=provider_id,
+                    api_key=key,
+                    model=model,
+                )
+            )
             job.result_json = json.dumps(
-                {"sources": sources, "report": report}, ensure_ascii=False, default=str
+                {
+                    "sources": sources,
+                    "report": report,
+                    "intelligence_brief": intelligence_brief,
+                },
+                ensure_ascii=False,
+                default=str,
             )
             job.used_llm = report.get("used_llm") or "rule-based"
             job.status = "done"
