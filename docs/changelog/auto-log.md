@@ -23,3 +23,8 @@
 
 - **Son commit:** 212a33d — feat: yüz/görsel arama (Faz 1) — 10 dış adaptör entegre + osint_face_search standalone
 - **Working tree:** (working tree clean)
+
+## 2026-05-02T16:25:20Z
+
+- **Son commit:** ff99b03 — fix: rapor sayfası UX — 'Hemen Cevap' tek-bakış hero, ham kaynaklar accordion
+- **Working tree:** (working tree clean)

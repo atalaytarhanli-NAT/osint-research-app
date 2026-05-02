@@ -26,14 +26,20 @@ _FONT_REGISTERED = False
 
 
 def _ensure_fonts_registered() -> bool:
-    """DejaVu Sans TTF font'larını reportlab'a tek seferde kayıt et.
-    Türkçe karakter render'i için zorunlu (xhtml2pdf default font ASCII only)."""
+    """DejaVu Sans TTF font'larını reportlab'a + xhtml2pdf'e kayıt et.
+
+    İki kayıt katmanı:
+    1. reportlab pdfmetrics.registerFont — düşük seviye, PDF'in kendisi
+    2. xhtml2pdf.default.DEFAULT_FONT = "DejaVu" — pisa varsayılan font olarak set
+    + CSS'deki "DejaVu" font-family bunu kullanır
+    """
     global _FONT_REGISTERED
     if _FONT_REGISTERED:
         return True
     try:
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.pdfbase.pdfmetrics import registerFontFamily
     except ImportError:
         log.warning("reportlab not available, fonts not registered")
         return False
@@ -47,18 +53,31 @@ def _ensure_fonts_registered() -> bool:
         pdfmetrics.registerFont(TTFont("DejaVu", str(regular)))
         if bold.exists():
             pdfmetrics.registerFont(TTFont("DejaVu-Bold", str(bold)))
-            from reportlab.pdfbase.pdfmetrics import registerFontFamily
             registerFontFamily("DejaVu", normal="DejaVu", bold="DejaVu-Bold",
                                italic="DejaVu", boldItalic="DejaVu-Bold")
+        else:
+            registerFontFamily("DejaVu", normal="DejaVu", bold="DejaVu",
+                               italic="DejaVu", boldItalic="DejaVu")
+
         _FONT_REGISTERED = True
-        log.info("DejaVu fonts registered (regular + %s)", "bold" if bold.exists() else "no-bold")
+        log.info("DejaVu fonts registered (regular + %s) + pisa default set",
+                 "bold" if bold.exists() else "no-bold")
         return True
     except Exception as exc:
         log.warning("Font registration failed: %s", exc)
         return False
 
 
-PDF_CSS = """
+PDF_CSS_TEMPLATE = """
+@font-face {
+  font-family: "DejaVu";
+  src: url("__FONT_REGULAR__");
+}
+@font-face {
+  font-family: "DejaVu";
+  src: url("__FONT_BOLD__");
+  font-weight: bold;
+}
 @page {
   size: A4;
   margin: 1.5cm;
@@ -68,7 +87,7 @@ PDF_CSS = """
   }
 }
 body {
-  font-family: DejaVu, "DejaVu Sans", Arial, Helvetica, sans-serif;
+  font-family: "DejaVu";
   font-size: 10pt; line-height: 1.5; color: #1e293b;
 }
 h1 {
@@ -92,7 +111,7 @@ th, td {
 th { background: #e0e7ff; font-weight: bold; color: #312e81; }
 tr:nth-child(even) td { background: #f8fafc; }
 code {
-  font-family: "Courier New", monospace; background: #f1f5f9;
+  font-family: "DejaVu"; background: #f1f5f9;
   padding: 1pt 3pt; font-size: 9pt; color: #be185d;
 }
 pre { background: #f1f5f9; padding: 6pt; font-size: 9pt; }
@@ -389,7 +408,20 @@ def render_pdf(
     from xhtml2pdf import pisa  # lazy import (large dep)
     import markdown as md_lib
 
-    _ensure_fonts_registered()  # DejaVu Sans (Türkçe karakter)
+    if not _ensure_fonts_registered():
+        log.error("DejaVu font registration FAILED — Türkçe karakter düzgün render edilmeyebilir")
+
+    # @font-face için font path'lerini CSS'e yerleştir.
+    # Render Linux'ta path Latin → çalışır.
+    # Windows'ta Türkçe klasör adı (Atalay Tarhanlı) varsa xhtml2pdf temp
+    # file path'i bozar — bu durum lokal test için problem; production OK.
+    font_regular = (_FONT_DIR / "DejaVuSans.ttf").as_posix()
+    font_bold = (_FONT_DIR / "DejaVuSans-Bold.ttf").as_posix()
+    css = (
+        PDF_CSS_TEMPLATE
+        .replace("__FONT_REGULAR__", font_regular)
+        .replace("__FONT_BOLD__", font_bold)
+    )
 
     cover_html = _render_cover(target, kind, report, sources, used_llm)
 
@@ -420,7 +452,7 @@ def render_pdf(
         body_html = _render_structured_html(target, report, sources)
 
     full_html = (
-        f"<html><head><meta charset='utf-8'><style>{PDF_CSS}</style></head>"
+        f"<html><head><meta charset='utf-8'><style>{css}</style></head>"
         f"<body>{cover_html}{body_html}"
         f"<div id=\"footer_content\" style=\"font-size:8pt;color:#94a3b8;text-align:center;\">"
         f"OSINT Research App — {_escape(target)} — Sayfa <pdf:pagenumber/> / <pdf:pagecount/></div>"
