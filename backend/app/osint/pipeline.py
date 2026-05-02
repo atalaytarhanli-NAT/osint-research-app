@@ -1,4 +1,4 @@
-"""OSINT pipeline orchestrator — 14 kaynak paralel + opsiyonel 2-pass deepening."""
+"""OSINT pipeline orchestrator — paralel kaynaklar + 2-pass deepening + scope filter."""
 
 from __future__ import annotations
 
@@ -56,31 +56,50 @@ async def _safe(name: str, coro):
         return []
 
 
-async def _first_pass(target: str, kind: str) -> list[SourceResult]:
-    tasks: list = [
-        _safe("ddg", search_web(target)),
-        _safe("ddg_news", search_news(target)),
-        _safe("bing", search_bing(target)),
-        _safe("yandex", search_yandex(target)),
-        _safe("mojeek", search_mojeek(target)),
-        _safe("wiki_en", lookup_wikipedia(target, "en")),
-        _safe("wiki_tr", lookup_wikipedia(target, "tr")),
-        _safe("wikidata", search_wikidata(target)),
-        _safe("hn", search_hn(target)),
-        _safe("reddit", search_reddit(target)),
-        _safe("github", search_github(target)),
-        _safe("gdelt", search_gdelt(target)),
-        _safe("arxiv", search_arxiv(target)),
-        _safe("wayback", wayback_lookup(target)),
-        _safe("archive_today", archive_today_lookup(target)),
+def _quote_for_search(target: str, kind: str) -> str:
+    """Person/organization hedeflerini SERP'lerde tırnağa al → exact match,
+    eş isim çakışmasını azalt."""
+    t = target.strip()
+    if kind in ("person", "organization") and " " in t and not (t.startswith('"') and t.endswith('"')):
+        return f'"{t}"'
+    return t
+
+
+async def _web_pass(query: str, raw_target: str, kind: str) -> list[SourceResult]:
+    tasks = [
+        _safe("ddg", search_web(query)),
+        _safe("ddg_news", search_news(query)),
+        _safe("bing", search_bing(query)),
+        _safe("yandex", search_yandex(query)),
+        _safe("mojeek", search_mojeek(query)),
+        _safe("wiki_en", lookup_wikipedia(raw_target, "en")),
+        _safe("wiki_tr", lookup_wikipedia(raw_target, "tr")),
+        _safe("wikidata", search_wikidata(raw_target)),
+        _safe("github", search_github(query)),
+        _safe("gdelt", search_gdelt(query)),
+        _safe("arxiv", search_arxiv(query)),
+        _safe("wayback", wayback_lookup(raw_target)),
+        _safe("archive_today", archive_today_lookup(raw_target)),
     ]
     if kind == "url":
-        tasks.append(_safe("crtsh", search_crtsh(target)))
-    if kind in ("social", "person"):
-        tasks.append(_safe("social_probe", probe_username(target)))
+        tasks.append(_safe("crtsh", search_crtsh(raw_target)))
     if kind in ("person", "organization", "auto"):
-        tasks.append(_safe("person_enrich", enrich_with_variations(target, kind)))
+        tasks.append(_safe("person_enrich", enrich_with_variations(raw_target, kind)))
 
+    chunks = await asyncio.gather(*tasks)
+    flat: list[SourceResult] = []
+    for chunk in chunks:
+        flat.extend(chunk)
+    return flat
+
+
+async def _social_pass(query: str, raw_target: str, kind: str) -> list[SourceResult]:
+    tasks = [
+        _safe("hn", search_hn(query)),
+        _safe("reddit", search_reddit(query)),
+    ]
+    if kind in ("social", "person"):
+        tasks.append(_safe("social_probe", probe_username(raw_target)))
     chunks = await asyncio.gather(*tasks)
     flat: list[SourceResult] = []
     for chunk in chunks:
@@ -97,6 +116,42 @@ _STOPWORDS = {
 }
 
 
+def _significant_words(text: str) -> list[str]:
+    words = re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü]{3,}", text)
+    return [w.lower() for w in words if w.lower() not in _STOPWORDS]
+
+
+def _filter_relevance(target: str, kind: str, sources: list[SourceResult]) -> list[SourceResult]:
+    """Çok kelimeli isim/kurum hedeflerinde, başlık+snippet+url'de hedefin
+    anlamlı kelimelerinden hiçbiri geçmiyorsa o kaynağı düşür.
+
+    Bu, Render IP'leriyle yapılan "Atalay Tarhanlı" araması gibi durumlarda
+    SERP'lerin döndürdüğü ilgisiz sonuçları (haber, başka kişiler) eler."""
+    if kind not in ("person", "organization"):
+        return sources
+    sig = _significant_words(target)
+    if len(sig) < 2:
+        return sources
+
+    out: list[SourceResult] = []
+    for s in sources:
+        # Yetkili kaynaklar (wiki/wikidata/wayback/archive) her zaman geçer
+        if s.kind in ("wiki", "archive"):
+            out.append(s)
+            continue
+        # social_probe sonuçları zaten username'den geldi, ilgili
+        if s.source.startswith("social:"):
+            out.append(s)
+            continue
+        text = " ".join([s.title or "", s.snippet or "", s.url or ""]).lower()
+        if any(w in text for w in sig):
+            out.append(s)
+        else:
+            log.debug("dropped irrelevant: %s — %s", s.source, s.title[:80] if s.title else s.url)
+    log.info("relevance filter: %d → %d (kind=%s, target=%r)", len(sources), len(out), kind, target)
+    return out
+
+
 def _refine_queries(target: str, sources: list[SourceResult], k: int = 3) -> list[str]:
     """Top tekrar eden anlamlı kelimelerden ek sorgular üret."""
     text_blob = " ".join((s.title or "") + " " + (s.snippet or "") for s in sources[:30])
@@ -108,14 +163,14 @@ def _refine_queries(target: str, sources: list[SourceResult], k: int = 3) -> lis
         if wl in _STOPWORDS or wl in target_lower or target_lower in wl:
             continue
         counter[wl] += 1
-    common = [w for w, _ in counter.most_common(8) if _ >= 2]
+    common = [w for w, c in counter.most_common(8) if c >= 2]
     queries: list[str] = []
     for term in common[:k]:
         queries.append(f'"{target}" {term}')
     return queries
 
 
-async def _second_pass(target: str, refined_queries: list[str]) -> list[SourceResult]:
+async def _second_pass(query: str, refined_queries: list[str]) -> list[SourceResult]:
     if not refined_queries:
         return []
     tasks = []
@@ -129,7 +184,7 @@ async def _second_pass(target: str, refined_queries: list[str]) -> list[SourceRe
     for chunk in chunks:
         flat.extend(chunk)
     for s in flat:
-        s.confidence = max(0.3, s.confidence - 0.1)  # 2nd pass biraz daha düşük güven
+        s.confidence = max(0.3, s.confidence - 0.1)
         s.raw["pass"] = 2
     return flat
 
@@ -147,21 +202,34 @@ def _dedupe(items: list[SourceResult]) -> list[dict[str, Any]]:
 
 
 async def run_pipeline(
-    target: str, kind_hint: str = "auto", intensity: str = "deep"
+    target: str,
+    kind_hint: str = "auto",
+    intensity: str = "deep",
+    scope: str = "all",
 ) -> list[dict[str, Any]]:
-    """intensity: 'quick' (1 pass) | 'deep' (2 pass with refined queries)."""
+    """
+    intensity: 'quick' (1 pass) | 'deep' (2 pass)
+    scope:     'web' | 'social' | 'all'
+    """
     kind = detect_kind(target, kind_hint)
+    query = _quote_for_search(target, kind)
 
-    first = await _first_pass(target, kind)
-    log.info("OSINT first pass: %d sources for %r", len(first), target)
+    first: list[SourceResult] = []
+    if scope in ("web", "all"):
+        first.extend(await _web_pass(query, target, kind))
+    if scope in ("social", "all"):
+        first.extend(await _social_pass(query, target, kind))
 
-    if intensity == "deep":
+    log.info("OSINT first pass: %d sources for %r (scope=%s)", len(first), target, scope)
+
+    if intensity == "deep" and scope in ("web", "all"):
         refined = _refine_queries(target, first, k=3)
         log.info("OSINT refined queries: %s", refined)
-        second = await _second_pass(target, refined)
+        second = await _second_pass(query, refined)
         log.info("OSINT second pass: %d sources", len(second))
         all_results = first + second
     else:
         all_results = first
 
-    return _dedupe(all_results)
+    filtered = _filter_relevance(target, kind, all_results)
+    return _dedupe(filtered)

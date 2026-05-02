@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 
 from .api import admin as admin_api
 from .api import auth as auth_api
+from .api import image_search as image_api
 from .api import research as research_api
 from .api import settings as settings_api
 from .auth import get_optional_user
@@ -41,6 +42,7 @@ app.include_router(auth_api.router)
 app.include_router(settings_api.router)
 app.include_router(research_api.router)
 app.include_router(admin_api.router)
+app.include_router(image_api.router)
 
 
 @app.on_event("startup")

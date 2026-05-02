@@ -4,87 +4,209 @@
 <section class="mx-auto max-w-5xl px-4 sm:px-6 pt-8 sm:pt-12 pb-16" x-data="researchPanel()">
   <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">Araştır</h1>
 
-  <form @submit.prevent="submit" class="mt-6 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
-    <input type="text" x-model="target" required placeholder="İsim, kurum, @kullanici, URL, kelime…"
-      class="rounded-xl bg-white ring-1 ring-slate-200 focus:ring-brand-400 focus:ring-2 px-4 py-3 outline-none placeholder:text-slate-400" />
-    <select x-model="kind" class="rounded-xl bg-white ring-1 ring-slate-200 focus:ring-brand-400 focus:ring-2 px-3 py-3 outline-none text-sm">
-      <option value="auto">Auto</option>
-      <option value="person">Kişi</option>
-      <option value="organization">Kurum</option>
-      <option value="social">Sosyal</option>
-      <option value="url">URL</option>
-      <option value="keyword">Kelime</option>
-    </select>
-    <button :disabled="loading" type="submit"
-      class="rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-medium px-5 py-3">
-      <span x-show="!loading">Ara →</span>
-      <span x-show="loading">…</span>
-    </button>
-  </form>
-
-  <div class="mt-3 flex items-center flex-wrap gap-2 text-xs text-slate-500">
-    <select x-model="intensity" class="rounded-lg bg-white ring-1 ring-slate-200 px-2 py-1.5 text-xs">
-      <option value="deep">Derin tarama (2-pass, ~12 sn)</option>
-      <option value="quick">Hızlı (1-pass, ~6 sn)</option>
-    </select>
-    <select x-model="provider" class="rounded-lg bg-white ring-1 ring-slate-200 px-2 py-1.5 text-xs">
-      <option value="">LLM: otomatik</option>
-      {% for p in providers %}
-        <option value="{{ p.id }}">{{ p.name }}{% if p.free_tier %} · ücretsiz{% endif %}</option>
-      {% endfor %}
-    </select>
-    <a href="/settings" class="ml-auto text-brand-600 hover:underline">Anahtar ekle →</a>
+  <!-- Mode tabs -->
+  <div class="mt-5 inline-flex rounded-xl bg-slate-100 p-1 text-sm">
+    <button @click="mode='research'"
+      :class="mode==='research' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'"
+      class="px-4 py-1.5 rounded-lg font-medium transition">Metin / OSINT</button>
+    <button @click="mode='image'"
+      :class="mode==='image' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'"
+      class="px-4 py-1.5 rounded-lg font-medium transition">Görsel ters arama</button>
   </div>
 
-  <p x-show="error" x-text="error" class="mt-3 text-rose-600 text-sm"></p>
+  <!-- ====== Mode: research (text / OSINT) ====== -->
+  <div x-show="mode==='research'" class="mt-6">
+    <form @submit.prevent="submit" class="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+      <input type="text" x-model="target" required placeholder="İsim, kurum, @kullanici, URL, kelime…"
+        class="rounded-xl bg-white ring-1 ring-slate-200 focus:ring-brand-400 focus:ring-2 px-4 py-3 outline-none placeholder:text-slate-400" />
+      <select x-model="kind" class="rounded-xl bg-white ring-1 ring-slate-200 focus:ring-brand-400 focus:ring-2 px-3 py-3 outline-none text-sm">
+        <option value="auto">Auto</option>
+        <option value="person">Kişi</option>
+        <option value="organization">Kurum</option>
+        <option value="social">Sosyal</option>
+        <option value="url">URL</option>
+        <option value="keyword">Kelime</option>
+      </select>
+      <button :disabled="loading" type="submit"
+        class="rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-medium px-5 py-3">
+        <span x-show="!loading">Ara →</span>
+        <span x-show="loading">…</span>
+      </button>
+    </form>
 
-  <div class="mt-12">
-    <div class="flex items-center justify-between mb-3">
-      <h2 class="text-base font-semibold text-slate-700">Son aramalar</h2>
-      <a href="/history" class="text-xs text-brand-600 hover:underline">Tümü</a>
+    <!-- Scope (web/social/all) -->
+    <div class="mt-3 inline-flex rounded-lg bg-slate-100 p-1 text-xs">
+      <button @click="scope='all'"
+        :class="scope==='all' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'"
+        class="px-3 py-1 rounded-md font-medium" type="button">Hepsi</button>
+      <button @click="scope='web'"
+        :class="scope==='web' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'"
+        class="px-3 py-1 rounded-md font-medium" type="button">Sadece Web</button>
+      <button @click="scope='social'"
+        :class="scope==='social' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'"
+        class="px-3 py-1 rounded-md font-medium" type="button">Sadece Sosyal</button>
     </div>
-    <div class="grid sm:grid-cols-2 gap-2.5">
-      <template x-for="job in jobs" :key="job.id">
-        <a :href="`/research/${job.id}`"
-          class="rounded-xl bg-white ring-1 ring-slate-200 hover:ring-brand-300 hover:shadow-sm transition p-4">
-          <div class="flex items-center gap-2 text-[11px]">
-            <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase tracking-wider" x-text="job.kind"></span>
-            <span :class="statusClass(job.status)" class="font-medium uppercase tracking-wider" x-text="job.status"></span>
-            <span class="ml-auto text-slate-400" x-text="formatDate(job.created_at)"></span>
-          </div>
-          <div class="font-medium text-slate-900 mt-1.5 truncate" x-text="job.target"></div>
-          <div class="text-[11px] text-slate-400 mt-0.5" x-text="job.used_llm || ''"></div>
-        </a>
-      </template>
-      <div x-show="jobs.length === 0" class="col-span-full text-center text-sm text-slate-400 py-8">
-        Henüz arama yok
+
+    <div class="mt-3 flex items-center flex-wrap gap-2 text-xs text-slate-500">
+      <select x-model="intensity" class="rounded-lg bg-white ring-1 ring-slate-200 px-2 py-1.5 text-xs">
+        <option value="deep">Derin (2-pass)</option>
+        <option value="quick">Hızlı (1-pass)</option>
+      </select>
+      <select x-model="provider" class="rounded-lg bg-white ring-1 ring-slate-200 px-2 py-1.5 text-xs">
+        <option value="">LLM: otomatik</option>
+        {% for p in providers %}
+          <option value="{{ p.id }}">{{ p.name }}{% if p.free_tier %} · ücretsiz{% endif %}</option>
+        {% endfor %}
+      </select>
+      <a href="/settings" class="ml-auto text-brand-600 hover:underline">Anahtar ekle →</a>
+    </div>
+
+    <p x-show="error" x-text="error" class="mt-3 text-rose-600 text-sm"></p>
+
+    <div class="mt-12">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-semibold text-slate-700">Son aramalar</h2>
+        <a href="/history" class="text-xs text-brand-600 hover:underline">Tümü</a>
+      </div>
+      <div class="grid sm:grid-cols-2 gap-2.5">
+        <template x-for="job in jobs" :key="job.id">
+          <a :href="`/research/${job.id}`"
+            class="rounded-xl bg-white ring-1 ring-slate-200 hover:ring-brand-300 hover:shadow-sm transition p-4">
+            <div class="flex items-center gap-2 text-[11px]">
+              <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase tracking-wider" x-text="job.kind"></span>
+              <span x-show="job.scope && job.scope !== 'all'" class="px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 uppercase tracking-wider" x-text="job.scope"></span>
+              <span :class="statusClass(job.status)" class="font-medium uppercase tracking-wider" x-text="job.status"></span>
+              <span class="ml-auto text-slate-400" x-text="formatDate(job.created_at)"></span>
+            </div>
+            <div class="font-medium text-slate-900 mt-1.5 truncate" x-text="job.target"></div>
+            <div class="text-[11px] text-slate-400 mt-0.5" x-text="job.used_llm || ''"></div>
+          </a>
+        </template>
+        <div x-show="jobs.length === 0" class="col-span-full text-center text-sm text-slate-400 py-8">
+          Henüz arama yok
+        </div>
       </div>
     </div>
+  </div>
+
+  <!-- ====== Mode: image ====== -->
+  <div x-show="mode==='image'" class="mt-6 space-y-4">
+    <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
+      <div class="text-sm font-semibold mb-3">Görsel yükle</div>
+      <p class="text-xs text-slate-500 mb-3">Görseli catbox.moe'ya public host eder, sonra Google Lens / Yandex / TinEye / Bing'de tek tıkla ters arama yapar. Maksimum 8 MB. <strong>Görsel sunucumuzda saklanmaz.</strong></p>
+      <input type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/bmp"
+        @change="onFile($event)"
+        class="text-sm w-full rounded-lg border border-dashed border-slate-300 p-3 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:text-slate-700 hover:file:bg-slate-200" />
+      <div x-show="img.uploading" class="mt-2 text-xs text-slate-500">Yükleniyor…</div>
+    </div>
+
+    <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
+      <div class="text-sm font-semibold mb-3">veya görsel URL'si</div>
+      <div class="flex gap-2">
+        <input type="url" x-model="img.url" placeholder="https://…/image.jpg"
+          class="flex-1 rounded-lg bg-slate-50 ring-1 ring-slate-200 focus:ring-brand-400 focus:ring-2 px-3 py-2 text-sm outline-none" />
+        <button @click="reverseByUrl()" :disabled="img.loading"
+          class="rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-sm font-medium px-4">Ters ara</button>
+      </div>
+    </div>
+
+    <div x-show="img.result" class="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
+      <div class="flex items-center gap-3 flex-wrap">
+        <div class="text-sm font-semibold">Sonuç</div>
+        <a :href="img.result?.image_url" target="_blank" rel="noopener" class="text-xs text-brand-600 hover:underline truncate max-w-[300px] sm:max-w-[500px]" x-text="img.result?.image_url"></a>
+      </div>
+      <div x-show="img.result?.note" x-text="img.result?.note" class="mt-1 text-[11px] text-slate-500"></div>
+      <img x-show="img.result?.image_url" :src="img.result?.image_url" class="mt-3 max-h-48 rounded-lg border border-slate-200" />
+
+      <div class="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <template x-for="(url, name) in (img.result?.reverse_links || {})" :key="name">
+          <a :href="url" target="_blank" rel="noopener"
+            class="rounded-lg ring-1 ring-slate-200 hover:ring-brand-400 hover:bg-brand-50 px-3 py-2 text-sm font-medium text-slate-700 hover:text-brand-700 text-center transition" x-text="labelFor(name)"></a>
+        </template>
+      </div>
+
+      <button @click="openAll()" class="mt-3 w-full rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium py-2">Hepsini yeni sekmelerde aç</button>
+    </div>
+
+    <p x-show="img.error" x-text="img.error" class="text-rose-600 text-sm"></p>
   </div>
 </section>
 
 <script>
   function researchPanel() {
     return {
-      target: '', kind: 'auto', provider: '', intensity: 'deep', loading: false, error: '', jobs: [],
+      mode: 'research',
+      target: '', kind: 'auto', provider: '', intensity: 'deep', scope: 'all',
+      loading: false, error: '', jobs: [],
+      img: { url: '', uploading: false, loading: false, error: '', result: null },
+
       async init() { await this.load(); },
       async load() { try { this.jobs = await window.app.api('/api/research'); } catch (e) {} },
+
       async submit() {
         this.loading = true; this.error = '';
         try {
           const job = await window.app.api('/api/research', {
             method: 'POST',
-            body: JSON.stringify({ target: this.target, kind: this.kind, intensity: this.intensity, provider: this.provider || null }),
+            body: JSON.stringify({
+              target: this.target, kind: this.kind, intensity: this.intensity, scope: this.scope,
+              provider: this.provider || null,
+            }),
           });
           window.location.href = `/research/${job.id}`;
         } catch (e) { this.error = e.message || 'Hata'; }
         finally { this.loading = false; }
       },
+
       statusClass(s) {
         return ({ pending: 'text-amber-600', running: 'text-brand-600', done: 'text-emerald-600', error: 'text-rose-600' })[s] || 'text-slate-500';
       },
       formatDate(iso) {
         try { return new Date(iso).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' }); } catch { return ''; }
+      },
+
+      async onFile(ev) {
+        const f = ev.target.files?.[0];
+        if (!f) return;
+        this.img.uploading = true; this.img.error = ''; this.img.result = null;
+        try {
+          const fd = new FormData();
+          fd.append('file', f);
+          const res = await fetch('/api/image/upload', { method: 'POST', credentials: 'include', body: fd });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${res.status}`);
+          }
+          this.img.result = await res.json();
+        } catch (e) { this.img.error = e.message; }
+        finally { this.img.uploading = false; }
+      },
+
+      async reverseByUrl() {
+        if (!this.img.url) return;
+        this.img.loading = true; this.img.error = ''; this.img.result = null;
+        try {
+          this.img.result = await window.app.api('/api/image/reverse', {
+            method: 'POST', body: JSON.stringify({ url: this.img.url })
+          });
+        } catch (e) { this.img.error = e.message; }
+        finally { this.img.loading = false; }
+      },
+
+      labelFor(key) {
+        return ({
+          google_lens: 'Google Lens',
+          yandex_images: 'Yandex',
+          tineye: 'TinEye',
+          bing_visual: 'Bing Visual',
+          google_images: 'Google Images',
+          baidu_images: 'Baidu',
+        })[key] || key;
+      },
+
+      openAll() {
+        const links = Object.values(this.img.result?.reverse_links || {});
+        for (const url of links) window.open(url, '_blank', 'noopener');
       },
     };
   }

@@ -45,6 +45,12 @@ _PENDING_COLUMNS: list[tuple[str, str, str, str]] = [
         "VARCHAR(10) DEFAULT 'deep' NOT NULL",
         "VARCHAR(10) DEFAULT 'deep' NOT NULL",
     ),
+    (
+        "research_jobs",
+        "scope",
+        "VARCHAR(10) DEFAULT 'all' NOT NULL",
+        "VARCHAR(10) DEFAULT 'all' NOT NULL",
+    ),
 ]
 
 

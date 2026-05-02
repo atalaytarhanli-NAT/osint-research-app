@@ -29,6 +29,7 @@ class StartIn(BaseModel):
     target: str = Field(min_length=2, max_length=500)
     kind: str = Field(default="auto")  # auto/person/organization/url/keyword/social
     intensity: str = Field(default="deep")  # quick | deep (2-pass)
+    scope: str = Field(default="all")  # web | social | all
     provider: Optional[str] = None
     model: Optional[str] = None
     options: dict = Field(default_factory=dict)
@@ -38,6 +39,8 @@ class JobOut(BaseModel):
     id: int
     target: str
     kind: str
+    intensity: Optional[str] = None
+    scope: Optional[str] = None
     status: str
     used_llm: Optional[str]
     created_at: datetime
@@ -111,7 +114,14 @@ def _run_job(job_id: int) -> None:
 
         provider_id, key, model = _select_provider(job.user_id, job.used_llm, db)
         try:
-            sources = asyncio.run(run_pipeline(job.target, job.kind, intensity=job.intensity or "deep"))
+            sources = asyncio.run(
+                run_pipeline(
+                    job.target,
+                    job.kind,
+                    intensity=job.intensity or "deep",
+                    scope=job.scope or "all",
+                )
+            )
             report = asyncio.run(
                 build_report(
                     target=job.target,
@@ -152,6 +162,7 @@ def start_research(
         target=data.target.strip(),
         kind=data.kind,
         intensity=data.intensity if data.intensity in ("quick", "deep") else "deep",
+        scope=data.scope if data.scope in ("web", "social", "all") else "all",
         status="pending",
         used_llm=data.provider,
     )
@@ -165,6 +176,8 @@ def start_research(
         id=job.id,
         target=job.target,
         kind=job.kind,
+        intensity=job.intensity,
+        scope=job.scope,
         status=job.status,
         used_llm=job.used_llm,
         created_at=job.created_at,
@@ -189,6 +202,8 @@ def list_jobs(
             id=r.id,
             target=r.target,
             kind=r.kind,
+            intensity=r.intensity,
+            scope=r.scope,
             status=r.status,
             used_llm=r.used_llm,
             created_at=r.created_at,

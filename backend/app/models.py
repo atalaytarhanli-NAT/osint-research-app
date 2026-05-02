@@ -57,6 +57,7 @@ class ResearchJob(Base):
     target: Mapped[str] = mapped_column(String(500))
     kind: Mapped[str] = mapped_column(String(40))  # auto/person/organization/url/keyword/social
     intensity: Mapped[str] = mapped_column(String(10), default="deep")  # quick | deep
+    scope: Mapped[str] = mapped_column(String(10), default="all")  # web | social | all
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending/running/done/error
     result_json: Mapped[Optional[str]] = mapped_column(Text)
     error: Mapped[Optional[str]] = mapped_column(Text)
