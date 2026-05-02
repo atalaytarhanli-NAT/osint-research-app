@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Rapor{% endblock %}
+{% block nav %}{% if not embed %}{{ super() }}{% endif %}{% endblock %}
 {% block content %}
-<section class="mx-auto max-w-7xl px-4 sm:px-6 pt-6 sm:pt-10 pb-16" x-data="reportView({{ job_id }})" x-init="poll()">
+<section class="{% if embed %}px-4 pt-2 pb-8{% else %}mx-auto max-w-7xl px-4 sm:px-6 pt-6 sm:pt-10 pb-16{% endif %}" x-data="reportView({{ job_id }})" x-init="poll()">
+  {% if not embed %}
   <a href="/dashboard" class="text-xs text-slate-500 hover:text-slate-700">← Panel</a>
+  {% endif %}
 
   <div x-show="!job" class="mt-12 text-center text-slate-400 text-sm">Yükleniyor…</div>
 

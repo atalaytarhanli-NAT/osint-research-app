@@ -28,3 +28,8 @@
 
 - **Son commit:** ff99b03 — fix: rapor sayfası UX — 'Hemen Cevap' tek-bakış hero, ham kaynaklar accordion
 - **Working tree:** (working tree clean)
+
+## 2026-05-02T16:47:59Z
+
+- **Son commit:** 59ce38a — chore: test PDF'i gitignore'a ekle
+- **Working tree:** (working tree clean)

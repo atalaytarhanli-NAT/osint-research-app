@@ -92,8 +92,10 @@ def dashboard_page(request: Request, user=Depends(get_optional_user)):
 def research_page(job_id: int, request: Request, user=Depends(get_optional_user)):
     if user is None:
         return RedirectResponse(url="/login", status_code=302)
+    embed = request.query_params.get("embed") == "1"
     return templates.TemplateResponse(
-        "report.html", {"request": request, "user": user, "job_id": job_id}
+        "report.html",
+        {"request": request, "user": user, "job_id": job_id, "embed": embed},
     )
 
 

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Araştır{% endblock %}
 {% block content %}
-<section class="mx-auto max-w-5xl px-4 sm:px-6 pt-8 sm:pt-12 pb-16" x-data="researchPanel()">
+<section class="mx-auto max-w-7xl px-4 sm:px-6 pt-6 sm:pt-8 pb-16" x-data="researchPanel()" x-init="init()">
   <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">Araştır</h1>
 
   <!-- Mode tabs -->
@@ -63,6 +63,19 @@
 
     <p x-show="error" x-text="error" class="mt-3 text-rose-600 text-sm"></p>
 
+    <!-- AKTİF RAPOR PANELİ — iframe ile inline (sayfa değiştirmeden) -->
+    <div x-show="activeJobId" class="mt-6">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="text-xs uppercase tracking-wider text-brand-600 font-semibold">Aktif Rapor</span>
+        <span class="text-xs text-slate-400 font-mono">#<span x-text="activeJobId"></span></span>
+        <button @click="closeReport()" class="ml-auto text-xs text-slate-500 hover:text-rose-600 px-2 py-1 rounded hover:bg-rose-50">✕ Kapat</button>
+      </div>
+      <iframe x-show="activeJobId" :src="`/research/${activeJobId}?embed=1`"
+        class="w-full h-[85vh] rounded-2xl ring-1 ring-slate-200 bg-white shadow-sm"
+        title="Aktif rapor"></iframe>
+    </div>
+
+    <!-- Geçmiş kartları — tıklayınca AKTİF RAPOR PANELİ inline yüklenir -->
     <div class="mt-12">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-base font-semibold text-slate-700">Son aramalar</h2>
@@ -70,8 +83,9 @@
       </div>
       <div class="grid sm:grid-cols-2 gap-2.5">
         <template x-for="job in jobs" :key="job.id">
-          <a :href="`/research/${job.id}`"
-            class="rounded-xl bg-white ring-1 ring-slate-200 hover:ring-brand-300 hover:shadow-sm transition p-4">
+          <button type="button" @click="openReport(job.id)"
+            class="text-left rounded-xl ring-1 transition p-4"
+            :class="job.id === activeJobId ? 'bg-brand-50 ring-brand-300 shadow-sm' : 'bg-white ring-slate-200 hover:ring-brand-300 hover:shadow-sm'">
             <div class="flex items-center gap-2 text-[11px]">
               <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase tracking-wider" x-text="job.kind"></span>
               <span x-show="job.scope && job.scope !== 'all'" class="px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 uppercase tracking-wider" x-text="job.scope"></span>
@@ -80,7 +94,7 @@
             </div>
             <div class="font-medium text-slate-900 mt-1.5 truncate" x-text="job.target"></div>
             <div class="text-[11px] text-slate-400 mt-0.5" x-text="job.used_llm || ''"></div>
-          </a>
+          </button>
         </template>
         <div x-show="jobs.length === 0" class="col-span-full text-center text-sm text-slate-400 py-8">
           Henüz arama yok
@@ -127,7 +141,8 @@
     <div x-show="img.result" class="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
       <div class="flex items-center gap-3 flex-wrap">
         <div class="text-sm font-semibold">Sonuç</div>
-        <a :href="img.result?.image_url" target="_blank" rel="noopener" class="text-xs text-brand-600 hover:underline truncate max-w-[300px] sm:max-w-[500px]" x-text="img.result?.image_url"></a>
+        <span class="text-xs text-slate-500 font-mono truncate max-w-[300px] sm:max-w-[500px]" x-text="img.result?.image_url"></span>
+        <button @click="copyToClipboard(img.result?.image_url)" class="text-[11px] rounded ring-1 ring-slate-200 px-2 py-0.5 hover:bg-slate-50">Kopyala</button>
       </div>
       <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
         <span x-show="img.result?.ttl" class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-mono">~<span x-text="img.result?.ttl"></span> sonra silinir</span>
@@ -135,14 +150,59 @@
       </div>
       <img x-show="img.result?.image_url" :src="img.result?.image_url" class="mt-3 max-h-48 rounded-lg border border-slate-200" />
 
-      <div class="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
-        <template x-for="(url, name) in (img.result?.reverse_links || {})" :key="name">
-          <a :href="url" target="_blank" rel="noopener"
-            class="rounded-lg ring-1 ring-slate-200 hover:ring-brand-400 hover:bg-brand-50 px-3 py-2 text-sm font-medium text-slate-700 hover:text-brand-700 text-center transition" x-text="labelFor(name)"></a>
-        </template>
+      <!-- Yüz/Görsel arama (in-app, paralel orchestrator) -->
+      <div class="mt-4">
+        <button @click="runFaceSearchFromUrl()" :disabled="img.faceBusy"
+          class="w-full rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-medium py-2.5">
+          <span x-show="!img.faceBusy">🔍 Yüz / Görsel Araması Yap (10 adaptör)</span>
+          <span x-show="img.faceBusy">Aranıyor… (≤2 dk)</span>
+        </button>
+        <p class="mt-2 text-[10px] text-slate-400">
+          Sonuçlar bu sayfada gösterilir, yeni sekme açılmaz. Adaptör API key'leri için
+          <a href="/settings" class="text-brand-600 hover:underline">Settings</a>.
+        </p>
       </div>
 
-      <button @click="openAll()" class="mt-3 w-full rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium py-2">Hepsini yeni sekmelerde aç</button>
+      <!-- Yüz arama sonuçları inline -->
+      <div x-show="img.faceResult" class="mt-4 rounded-xl bg-violet-50/50 ring-1 ring-violet-200 p-3">
+        <div class="text-[11px] uppercase tracking-widest text-violet-700 font-semibold mb-2">Yüz/Görsel Arama Sonucu</div>
+        <div class="text-xs mb-2">
+          <span class="font-semibold text-violet-700" x-text="img.faceResult?.successful?.length || 0"></span> motor başarılı /
+          <span class="font-semibold text-violet-700" x-text="img.faceResult?.total_matches || 0"></span> eşleşme
+        </div>
+        <ul class="space-y-1.5 max-h-72 overflow-y-auto">
+          <template x-for="(r, i) in (img.faceResult?.aggregated || []).slice(0, 12)" :key="i">
+            <li class="rounded-lg bg-white ring-1 ring-slate-200 p-2 text-xs">
+              <div class="flex items-center gap-2 mb-1 flex-wrap">
+                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ring-1"
+                  :class="r.confidence === 'CERTAIN' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' :
+                          r.confidence === 'CONFIDENT' ? 'bg-brand-50 text-brand-700 ring-brand-200' :
+                          'bg-amber-50 text-amber-700 ring-amber-200'" x-text="r.confidence"></span>
+                <span class="font-mono text-[10px] text-slate-600" x-text="`${r.consensus_score?.toFixed(0) || 0}/100`"></span>
+                <template x-for="s in r.sources" :key="s">
+                  <span class="text-[9px] px-1 py-0.5 rounded bg-violet-100 text-violet-700 font-mono" x-text="s"></span>
+                </template>
+              </div>
+              <div class="text-slate-700 truncate" x-text="r.title || r.url"></div>
+              <div class="font-mono text-[10px] text-slate-400 truncate" x-text="r.url"></div>
+            </li>
+          </template>
+        </ul>
+        <div x-show="(img.faceResult?.aggregated || []).length === 0" class="text-amber-700 text-xs">
+          Eşleşme bulunamadı. Settings'ten FaceCheck/SauceNAO key ekleyince sonuç gelir.
+        </div>
+      </div>
+
+      <!-- Manuel ters arama linkleri (eski yöntem, opsiyonel) — küçük link'ler, kart yok -->
+      <details class="mt-3">
+        <summary class="cursor-pointer text-[11px] text-slate-400 hover:text-slate-600">Manuel ters arama (Lens / Yandex / TinEye / ...) — yeni sekme açar</summary>
+        <div class="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+          <template x-for="(url, name) in (img.result?.reverse_links || {})" :key="name">
+            <a :href="url" target="_blank" rel="noopener"
+              class="rounded ring-1 ring-slate-200 hover:bg-slate-50 px-2 py-1 text-xs text-slate-600 text-center" x-text="labelFor(name)"></a>
+          </template>
+        </div>
+      </details>
     </div>
 
     <p x-show="img.error" x-text="img.error" class="text-rose-600 text-sm"></p>
@@ -155,10 +215,41 @@
       mode: 'research',
       target: '', kind: 'auto', provider: '', intensity: 'deep', scope: 'all',
       loading: false, error: '', jobs: [],
-      img: { url: '', ttl: '1h', uploading: false, loading: false, error: '', result: null },
+      activeJobId: null,
+      img: { url: '', ttl: '1h', uploading: false, loading: false, error: '', result: null,
+             file: null, faceBusy: false, faceResult: null },
 
-      async init() { await this.load(); },
+      async init() {
+        // URL'den ?job=N parsla (bookmark/refresh için)
+        const params = new URLSearchParams(window.location.search);
+        const jobParam = params.get('job');
+        if (jobParam && /^\d+$/.test(jobParam)) {
+          this.activeJobId = parseInt(jobParam, 10);
+        }
+        await this.load();
+        // Browser back/forward popstate
+        window.addEventListener('popstate', () => {
+          const p = new URLSearchParams(window.location.search);
+          const j = p.get('job');
+          this.activeJobId = j && /^\d+$/.test(j) ? parseInt(j, 10) : null;
+        });
+      },
       async load() { try { this.jobs = await window.app.api('/api/research'); } catch (e) {} },
+
+      openReport(jobId) {
+        this.activeJobId = jobId;
+        // URL bar'ı güncelle (sayfa yenilemeden)
+        window.history.pushState({jobId}, '', `/?job=${jobId}`);
+        // Aktif rapora scroll
+        this.$nextTick(() => {
+          const el = document.querySelector('iframe[title="Aktif rapor"]');
+          if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'});
+        });
+      },
+      closeReport() {
+        this.activeJobId = null;
+        window.history.pushState({}, '', '/');
+      },
 
       async submit() {
         this.loading = true; this.error = '';
@@ -170,7 +261,9 @@
               provider: this.provider || null,
             }),
           });
-          window.location.href = `/research/${job.id}`;
+          // SPA: sayfa değişmeden raporu inline aç (iframe poll'lar)
+          await this.load();  // geçmişi yenile
+          this.openReport(job.id);
         } catch (e) { this.error = e.message || 'Hata'; }
         finally { this.loading = false; }
       },
@@ -185,6 +278,8 @@
       async onFile(ev) {
         const f = ev.target.files?.[0];
         if (!f) return;
+        this.img.file = f;  // face-search için sakla
+        this.img.faceResult = null;
         this.img.uploading = true; this.img.error = ''; this.img.result = null;
         try {
           const fd = new FormData();
@@ -196,6 +291,33 @@
           this.img.result = data;
         } catch (e) { this.img.error = e.message; }
         finally { this.img.uploading = false; ev.target.value = ''; }
+      },
+
+      async runFaceSearchFromUrl() {
+        // SPA: yeni sekme açma, paralel orchestrator + sonuç inline panele
+        if (this.img.faceBusy) return;
+        const file = this.img.file;
+        if (!file) {
+          this.img.error = 'Önce bir dosya yükle (face search dosya bytes ile çalışır)';
+          return;
+        }
+        this.img.faceBusy = true; this.img.faceResult = null; this.img.error = '';
+        try {
+          const fd = new FormData();
+          fd.append('image', file);
+          const r = await fetch('/api/image/face-search', { method: 'POST', body: fd, credentials: 'include' });
+          if (!r.ok) {
+            const txt = await r.text().catch(() => '');
+            throw new Error(`HTTP ${r.status}: ${txt.slice(0, 200)}`);
+          }
+          this.img.faceResult = await r.json();
+        } catch (e) { this.img.error = e.message; }
+        finally { this.img.faceBusy = false; }
+      },
+
+      async copyToClipboard(text) {
+        if (!text) return;
+        try { await navigator.clipboard.writeText(text); } catch {}
       },
 
       async reverseByUrl() {
@@ -220,10 +342,6 @@
         })[key] || key;
       },
 
-      openAll() {
-        const links = Object.values(this.img.result?.reverse_links || {});
-        for (const url of links) window.open(url, '_blank', 'noopener');
-      },
     };
   }
 </script>
