@@ -14,6 +14,13 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from typing import Any, Optional
 
+from ..osint.content_synthesizer import (
+    synthesize_conclusion,
+    synthesize_identity_definition,
+    synthesize_overview,
+    synthesize_relations,
+    synthesize_top_findings,
+)
 from .providers import call_llm
 
 
@@ -767,14 +774,21 @@ def _rule_based_report(target: str, kind: str, sources: list[dict]) -> dict[str,
             }
         )
 
+    # LLM-free içerik sentezi: synthesize_* fonksiyonları kaynaklardan akıcı
+    # paragraf, top findings, kimlik tanımı, ilişki ve sonuç üretir.
+    synth_overview = synthesize_overview(target, kind, sources)
+    synth_findings = synthesize_top_findings(target, kind, sources, k=6)
+    synth_identity = synthesize_identity_definition(target, kind, sources)
+    synth_relations = synthesize_relations(target, sources, k=8)
+    synth_conclusion = synthesize_conclusion(target, kind, sources)
+
+    # Synthesize_top_findings yoksa eski top_findings kullan (geriye uyumluluk)
+    final_findings = synth_findings if synth_findings else top_findings
+
     return {
         "executive_summary": {
-            "overview": (
-                f"'{target}' için açık kaynaklardan {n} bulgu derlendi. "
-                f"En çok kayıt {max(groups, key=lambda k: len(groups[k])) if groups else 'yok'} "
-                f"kategorisinden geldi."
-            ),
-            "top_findings": top_findings,
+            "overview": synth_overview,
+            "top_findings": final_findings,
             "confidence": confidence,
             "risk_level": risk_level,
         },
@@ -782,11 +796,7 @@ def _rule_based_report(target: str, kind: str, sources: list[dict]) -> dict[str,
         "admiralty_findings": _rule_based_admiralty(sources),
         "cross_verification": cross_verification,
         "identity": {
-            "definition": (
-                f"Hedef '{target}' (tür ipucu: {kind}). "
-                "Kural-bazlı modda detaylı kimlik çıkarımı yapılmaz; "
-                "Settings'ten LLM anahtarı eklenirse bu bölüm zenginleştirilir."
-            ),
+            "definition": synth_identity,
             "context": "Ham veri gruplarına bakıldığında: "
             + ", ".join(f"{k}={len(v)}" for k, v in sorted(groups.items())),
             "known_links": [
@@ -805,7 +815,7 @@ def _rule_based_report(target: str, kind: str, sources: list[dict]) -> dict[str,
             "archive": _summarize_group(sources, groups.get("archive", [])),
         },
         "timeline": _build_timeline(sources),
-        "relations": [
+        "relations": synth_relations or [
             {
                 "entity": sources[i].get("title", ""),
                 "relation": sources[i].get("source", ""),
@@ -847,8 +857,5 @@ def _rule_based_report(target: str, kind: str, sources: list[dict]) -> dict[str,
             "Hedef için ek anahtar kelime kombinasyonu deneyin.",
             "Görsel ters arama: Google Lens / Yandex / TinEye linklerini manuel test edin.",
         ],
-        "conclusion": (
-            f"'{target}' hedefi için {n} kaynaktan derlenmiş ön bulgular hazır. "
-            "Detaylı sentez için bir LLM anahtarı ekleyin. Hiçbir bulgu ek doğrulama yapılmadan kesin kabul edilmemelidir."
-        ),
+        "conclusion": synth_conclusion,
     }

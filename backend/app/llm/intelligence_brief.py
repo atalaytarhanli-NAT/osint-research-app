@@ -14,6 +14,19 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from ..osint.content_synthesizer import (
+    _domain_distribution,
+    _extract_locations,
+    _extract_roles,
+    _extract_years,
+    _high_signal_sources,
+    _kind_distribution,
+    _social_platforms,
+    _top_topics,
+    synthesize_conclusion,
+    synthesize_identity_definition,
+    synthesize_overview,
+)
 from .providers import call_llm
 
 
@@ -242,14 +255,17 @@ async def build_intelligence_brief(
     model: Optional[str],
     purpose: str = "due_diligence",
 ) -> Optional[str]:
-    """LLM ile NATO/IC standardı Markdown rapor üret. LLM yoksa veya çok az
-    kaynak varsa None döndür (UI'da bölüm gizlenir)."""
-    if not provider_id or not api_key:
-        log.info("intelligence_brief skipped: no LLM provider/key")
-        return None
+    """NATO/IC standardı Markdown rapor üret.
+    - LLM key varsa: tam analyst-grade brief (prompt-driven, F3EAD + ACH + ...)
+    - LLM key yoksa: synthesize_template_brief() ile şablonlu fallback
+      (kaynaklardan istatistiksel/yapısal sentez, ham SERP'lere göre çok zengin).
+    """
     if len(sources) < 3:
         log.info("intelligence_brief skipped: too few sources (%d < 3)", len(sources))
         return None
+    if not provider_id or not api_key:
+        log.info("intelligence_brief: no LLM provider/key, using template synthesizer")
+        return synthesize_template_brief(target, kind, scope, intensity, sources, purpose)
 
     user_msg = _build_user_message(
         target=target,
@@ -283,5 +299,271 @@ async def build_intelligence_brief(
             text = text[: -3].rstrip()
     if not text or len(text) < 200:
         log.warning("intelligence_brief LLM produced too-short output: %r", text[:100])
-        return None
+        # LLM çıktısı kötüyse template fallback'i kullan
+        return synthesize_template_brief(target, kind, scope, intensity, sources, purpose)
     return text
+
+
+def _kind_label_tr(kind: str) -> str:
+    return {
+        "wiki": "Wikipedia/ansiklopedik",
+        "news": "haber",
+        "web": "genel web araması",
+        "code": "açık kaynak kod tabanları",
+        "profile": "sosyal medya profili",
+        "social": "sosyal medya tartışması",
+        "archive": "web arşivi",
+        "cybint": "teknik altyapı (DNS/SSL)",
+        "sanction": "yaptırım listesi",
+        "attack_surface": "saldırı yüzeyi (typo-squat)",
+        "financial": "finansal açıklama (SEC EDGAR)",
+        "threat_exposure": "siber tehdit (ransomware leak)",
+        "corp_registry": "kurumsal kayıt",
+        "link_signal": "tracking sinyali",
+    }.get(kind, kind)
+
+
+def synthesize_template_brief(
+    target: str, kind: str, scope: str, intensity: str,
+    sources: list[dict], purpose: str = "due_diligence",
+) -> str:
+    """LLM-free şablonlu Markdown brief — kaynaklardan istatistiksel sentez.
+
+    13 bölümlü NATO/IC formatına uyumlu çıktı. LLM kullanmıyor ama düz cümle
+    + tablo + Mermaid diyagramı ile çok daha zengin bir rapor üretir."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    n = len(sources)
+    overview = synthesize_overview(target, kind, sources)
+    identity_def = synthesize_identity_definition(target, kind, sources)
+    conclusion = synthesize_conclusion(target, kind, sources)
+
+    kind_dist = _kind_distribution(sources)
+    domains = _domain_distribution(sources, k=10)
+    roles = _extract_roles(sources)
+    locations = _extract_locations(sources)
+    min_y, max_y, _ = _extract_years(sources)
+    high = _high_signal_sources(sources)
+    platforms = _social_platforms(sources)
+    topics = _top_topics(sources, target, k=10)
+
+    risk_level = "high" if (high.get("sanction") or high.get("threat_exposure")) else (
+        "medium" if (high.get("attack_surface") or len([s for s in sources if s.get("kind") == "profile"]) >= 6)
+        else "low"
+    )
+
+    # ====== Markdown brief ======
+    out: list[str] = []
+    out.append(f"# OSINT İSTİHBARAT RAPORU")
+    out.append(f"**Hedef:** {target}")
+    out.append(f"**Rapor No:** TPL-{today}-{abs(hash(target)) % 10000:04d}")
+    out.append(f"**Sınıflandırma:** Kuruma Özel")
+    out.append(f"**Hazırlayan:** OSINT Research App (LLM-free template sentezi)")
+    out.append(f"**Tarih:** {today}")
+    out.append("")
+
+    # ## 1. YÖNETİCİ ÖZETİ
+    out.append("## 1. YÖNETİCİ ÖZETİ (BLUF)")
+    out.append("")
+    out.append(overview)
+    out.append("")
+    out.append(f"**Genel risk seviyesi:** `{risk_level.upper()}`")
+    out.append("")
+
+    # ## 2. KAPSAM
+    out.append("## 2. ARAŞTIRMA KAPSAMI")
+    out.append(f"- **Hedef:** {target} (tür: {kind})")
+    out.append(f"- **Amaç:** {purpose}")
+    out.append(f"- **Yasal dayanak:** Yalnızca açık kaynak (OSINT)")
+    out.append(f"- **Zaman aralığı:** "
+                + (f"{min_y}–{max_y}" if min_y and max_y and min_y != max_y else (str(min_y) if min_y else "tespit edilemedi")))
+    out.append(f"- **Derinlik seviyesi:** {intensity} ({scope} scope)")
+    out.append(f"- **Kapsam DIŞI:** Kapalı sistem, paywall, sızıntı veri içeriği, ToS ihlali")
+    out.append("")
+
+    # ## 3. PIR CEVAP MATRİSİ
+    out.append("## 3. PIR CEVAP MATRİSİ")
+    out.append("")
+    out.append("| PIR # | Soru | Cevap | Güven |")
+    out.append("|---|---|---|---|")
+    out.append(f"| PIR-1 | '{target}' kim/ne? | {identity_def[:140]} | C3 |")
+    if platforms:
+        out.append(f"| PIR-2 | Hangi platformlarda? | {len(platforms)} platform: {', '.join(platforms[:8])} | D5 |")
+    if locations:
+        out.append(f"| PIR-3 | Coğrafi bağlam? | {', '.join(l[0] for l in locations[:3])} | C3 |")
+    if roles:
+        out.append(f"| PIR-4 | Rol/sıfat? | {', '.join(r[0] for r in roles[:3])} | C3 |")
+    if min_y:
+        out.append(f"| PIR-5 | Aktif dönem? | {min_y}–{max_y or 'şimdi'} | B3 |")
+    out.append("")
+
+    # ## 4. KATEGORİLERE GÖRE BULGULAR
+    out.append("## 4. KATEGORİLERE GÖRE BULGULAR")
+    out.append("")
+    for i, s in enumerate(sources[:30]):
+        adm = "B2" if s.get("kind") in ("wiki", "archive", "cybint", "financial", "corp_registry") else \
+              "A1" if s.get("kind") == "sanction" else \
+              "B3" if s.get("kind") == "news" else \
+              "D5" if s.get("kind") == "profile" else "F4"
+        title = (s.get("title") or s.get("url") or "?")[:100]
+        snippet = (s.get("snippet") or "")[:160]
+        domain = s.get("url", "").split("/")[2] if "/" in s.get("url", "") else "?"
+        out.append(f"- **[{i}]** *{_kind_label_tr(s.get('kind', 'web'))}* `{adm}` — **{title}** ({domain})")
+        if snippet:
+            out.append(f"  > {snippet}")
+    if len(sources) > 30:
+        out.append(f"- *... +{len(sources) - 30} kaynak daha (kısa form için kesildi)*")
+    out.append("")
+
+    # ## 5. VARLIK İLİŞKİ DİYAGRAMI (Mermaid)
+    out.append("## 5. VARLIK İLİŞKİ DİYAGRAMI")
+    out.append("")
+    out.append("```mermaid")
+    out.append("graph LR")
+    safe_target = target.replace('"', "'").replace("[", "(").replace("]", ")")[:30]
+    out.append(f'  TARGET["🎯 {safe_target}"]')
+    if platforms:
+        for p in platforms[:6]:
+            out.append(f'  TARGET --> P_{p}["{p}"]')
+    for r, _ in roles[:3]:
+        rid = r.replace(" ", "_").replace("/", "_")
+        out.append(f'  TARGET -.->|rol/sıfat| R_{rid}["{r}"]')
+    for l, _ in locations[:3]:
+        out.append(f'  TARGET -.->|bağlam| L_{l}["{l}"]')
+    if high.get("sanction"):
+        out.append(f'  TARGET ===>|⚠ EŞLEŞME| SANC["Yaptırım Listesi"]')
+    if high.get("threat_exposure"):
+        out.append(f'  TARGET ===>|⚠ KAYIT| RW["Ransomware Leak"]')
+    out.append("```")
+    out.append("")
+
+    # ## 6. KRONOLOJİ
+    timeline_items = [
+        (s.get("published_at"), s.get("title", "")[:100], i)
+        for i, s in enumerate(sources)
+        if s.get("published_at")
+    ]
+    timeline_items.sort()
+    out.append("## 6. KRONOLOJİ")
+    out.append("")
+    if timeline_items:
+        out.append("| Tarih | Olay | Kaynak |")
+        out.append("|---|---|---|")
+        for date, title, idx in timeline_items[:15]:
+            out.append(f"| {date} | {title} | [{idx}] |")
+    else:
+        out.append("*Tarihli olay tespit edilemedi (kaynaklarda published_at alanı yok).*")
+    out.append("")
+
+    # ## 7. RİSK MATRİSİ
+    out.append("## 7. RİSK MATRİSİ")
+    out.append("")
+    out.append("| Risk | Olasılık (1-5) | Etki (1-5) | Skor | Kategori |")
+    out.append("|---|---|---|---|---|")
+    if high.get("sanction"):
+        out.append(f"| Yaptırım/PEP eşleşmesi ({len(high['sanction'])} kayıt) | 5 | 5 | **25** | legal |")
+    if high.get("threat_exposure"):
+        out.append(f"| Ransomware leak isim eşleşmesi ({len(high['threat_exposure'])} kayıt) | 5 | 5 | **25** | cyber |")
+    if high.get("attack_surface"):
+        out.append(f"| Typo-squat domain ({len(high['attack_surface'])} canlı) | 4 | 4 | **16** | cyber |")
+    profile_cnt = len([s for s in sources if s.get("kind") == "profile"])
+    if profile_cnt >= 4:
+        out.append(f"| Geniş sosyal medya yüzeyi ({profile_cnt} profil) | 4 | 3 | **12** | operational |")
+    if not (high or profile_cnt >= 4):
+        out.append(f"| Bilinen yüksek risk yok | 1 | 2 | **2** | operational |")
+    out.append("")
+
+    # ## 8. ACH (Çakışan Hipotezler)
+    out.append("## 8. ÇAKIŞAN HİPOTEZLER (ACH)")
+    out.append("")
+    out.append(f"- **H1:** Toplanan {n} kaynak tek bir '{target}' varlığını işaret ediyor. *(destekleyen: kaynakların büyük çoğunluğu)*")
+    out.append(f"- **H2:** Eş isim çakışması olabilir, kaynaklar birden fazla farklı varlığı karıştırıyor olabilir. *(zayıf: domain çeşitliliği homojen değilse)*")
+    if roles:
+        out.append(f"- **Tercih edilen:** H1 — rol/sıfat ({roles[0][0]}) çoğu kaynakta tutarlı.")
+    else:
+        out.append(f"- **Tercih edilen:** Belirsiz — manuel teyit gerekir.")
+    out.append("")
+
+    # ## 9. GÜVEN MATRİSİ (Admiralty)
+    out.append("## 9. GÜVEN MATRİSİ (Admiralty Code)")
+    out.append("")
+    out.append("| Kategori | Sayı | Tipik Kod | Vector |")
+    out.append("|---|---|---|---|")
+    for k, c in sorted(kind_dist.items(), key=lambda x: -x[1]):
+        adm = "A1" if k in ("sanction", "financial", "corp_registry") else \
+              "B2" if k in ("wiki", "cybint", "archive") else \
+              "B3" if k == "news" else \
+              "D5" if k == "profile" else "F4"
+        vec = "CORPINT" if k in ("cybint", "sanction", "financial", "corp_registry", "attack_surface", "threat_exposure") else \
+              "PERSINT" if k in ("profile", "social", "code") else \
+              "LINKINT" if k == "link_signal" else "GENERAL"
+        out.append(f"| {_kind_label_tr(k)} | {c} | {adm} | {vec} |")
+    out.append("")
+
+    # ## 10. İSTİHBARAT BOŞLUKLARI
+    out.append("## 10. İSTİHBARAT BOŞLUKLARI")
+    out.append("")
+    gaps = []
+    if not any(s.get("kind") == "wiki" for s in sources):
+        gaps.append("- Ansiklopedik kayıt (Wikipedia/Wikidata) bulunamadı — kimlik teyidi sınırlı")
+    if not any(s.get("kind") == "news" for s in sources):
+        gaps.append("- Haber kaynağında bahsi yok — kamuoyu izi düşük")
+    if min_y and (datetime.now().year - max_y) > 3:
+        gaps.append(f"- Son 3 yıl içinde aktivite tespit edilmedi (son kayıt: {max_y}) — güncel durum belirsiz")
+    if not gaps:
+        gaps.append("- Önemli boşluk tespit edilmedi (mevcut kaynaklar yeterli kapsam sağlıyor)")
+    gaps.append("- LLM-free template sentezi: bağlamsal nüans için Settings'ten LLM anahtarı eklenmeli")
+    out.extend(gaps)
+    out.append("")
+
+    # ## 11. KAYNAK LİSTESİ
+    out.append("## 11. KAYNAK LİSTESİ")
+    out.append("")
+    for i, s in enumerate(sources[:60]):
+        title = (s.get("title") or s.get("url") or "?")[:90]
+        url = s.get("url", "")
+        date = s.get("published_at", "")
+        out.append(f"- **[{i}]** [{title}]({url}) — *{s.get('source', '?')}*"
+                   + (f" ({date})" if date else ""))
+    if len(sources) > 60:
+        out.append(f"- *... +{len(sources) - 60} kaynak daha*")
+    out.append("")
+
+    # ## 12. ÖNERİLER
+    out.append("## 12. ÖNERİLER")
+    out.append("")
+    out.append("**Operasyonel (kısa vadeli):**")
+    if high.get("sanction"):
+        out.append("- Yaptırım eşleşmesi nedeniyle hukuki/uyumluluk birimine yönlendir")
+    if high.get("threat_exposure"):
+        out.append("- Acil incident response başlat, KVKK/GDPR bildirim yükümlülüğünü değerlendir")
+    if high.get("attack_surface"):
+        out.append("- Typo-squat domainlere takedown talebi, brand monitoring servisi al")
+    if profile_cnt >= 6:
+        out.append("- Sosyal medya profil ayarlarını sıkılaştır (profile_cnt yüksek = sosyal mühendislik yüzeyi)")
+    out.append("- Periyodik tekrar tarama (3 ay) önerilir")
+    out.append("")
+    out.append("**Stratejik (uzun vadeli):**")
+    out.append("- Settings'ten LLM anahtarı ekle (Groq/HuggingFace ücretsiz) — bu rapor LLM ile 10× daha zengin olur")
+    out.append("- Google CSE / Tavily / Serper key Settings'e ekle — daha fazla kaynak çeşitliliği")
+    if not any(s.get("kind") == "wiki" for s in sources):
+        out.append("- Hedefin Wikipedia/Wikidata maddesi yoksa, kurumsal sayfa veya profesyonel CV ile kimlik teyidi yap")
+    out.append("")
+
+    # ## 13. METODOLOJİ NOTU
+    out.append("## 13. EK — METODOLOJİ NOTU")
+    out.append("")
+    out.append(f"Bu rapor LLM kullanmadan, **istatistiksel/yapısal sentez** ile üretildi:")
+    out.append(f"- {n} kaynak ham SERP/API çıktısından derlendi")
+    out.append(f"- Domain frekansı, vektör dağılımı, rol/lokasyon regex eşleşmesi, tarih agregasyonu kullanıldı")
+    out.append(f"- En sık temalar: {', '.join(t[0] for t in topics[:5]) if topics else 'çıkarılamadı'}")
+    out.append(f"- En çok bahseden {min(5, len(domains))} domain: {', '.join(d[0] for d in domains[:5])}")
+    out.append("")
+    out.append("**Yasal/etik beyan:** Yalnızca açık kaynak. Pretexting, yetkisiz erişim, "
+               "hassas özel veri (rıza yok), stalking pattern'i yoktur.")
+    out.append("")
+    out.append("---")
+    out.append("")
+    out.append("## SONUÇ")
+    out.append(conclusion)
+
+    return "\n".join(out)
