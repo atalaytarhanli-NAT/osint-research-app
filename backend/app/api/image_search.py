@@ -25,6 +25,7 @@ from pydantic import BaseModel, HttpUrl
 
 from ..auth import get_current_user
 from ..models import User
+from ..osint.exif_extract import extract_exif
 
 
 log = logging.getLogger("image_search")
@@ -44,6 +45,7 @@ class ImageSearchOut(BaseModel):
     ttl: Optional[str] = None
     host: Optional[str] = None
     note: Optional[str] = None
+    exif: Optional[dict] = None  # EXIF metadata (A9 IMINT) — sadece upload'da
 
 
 class ImageUrlIn(BaseModel):
@@ -141,6 +143,9 @@ async def reverse_by_upload(
     filename = file.filename or "image.jpg"
     mime = file.content_type or "image/jpeg"
 
+    # EXIF extraction — A9 IMINT (NATO/IC). Pillow yoksa graceful skip.
+    exif_data = extract_exif(content)
+
     timeout = httpx.Timeout(connect=10.0, read=90.0, write=60.0, pool=10.0)
     headers = {"User-Agent": "OsintResearchApp/1.0"}
 
@@ -155,6 +160,7 @@ async def reverse_by_upload(
                 ttl=used_ttl,
                 host="litterbox.catbox.moe",
                 note=f"~{used_ttl} sonra otomatik silinir. Sunucumuzda saklanmadı.",
+                exif=exif_data,
             )
         except Exception as exc:
             log.warning("litterbox upload failed: %s", exc)
@@ -169,6 +175,7 @@ async def reverse_by_upload(
                 ttl=used_ttl,
                 host="uguu.se",
                 note=f"~{used_ttl} sonra otomatik silinir (uguu.se yedek host). Sunucumuzda saklanmadı.",
+                exif=exif_data,
             )
         except Exception as exc:
             log.warning("uguu upload failed: %s", exc)

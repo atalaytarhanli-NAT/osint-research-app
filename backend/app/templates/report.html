@@ -30,6 +30,62 @@
         <pre class="text-xs text-rose-600/80 mt-1 whitespace-pre-wrap" x-text="job.error"></pre>
       </div>
 
+      <!-- ===== Executive Dashboard Hero ===== -->
+      <template x-if="job.status === 'done' && report">
+        <div class="mt-6 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 text-white p-6 sm:p-8 ring-1 ring-slate-700 shadow-xl">
+          <div class="grid sm:grid-cols-[1fr_auto] gap-6 items-center">
+            <div class="min-w-0">
+              <div class="text-[10px] uppercase tracking-[0.2em] text-indigo-300 font-semibold">İstihbarat Raporu</div>
+              <h2 class="mt-1 text-2xl sm:text-3xl font-bold tracking-tight break-words" x-text="job.target"></h2>
+              <p class="mt-2 text-sm text-slate-300 leading-relaxed line-clamp-3" x-html="renderWithCitations(report.executive_summary.overview)"></p>
+              <!-- Vector dağılımı: PERSINT/CORPINT/LINKINT/GENERAL -->
+              <div class="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <template x-for="(c,k) in vectorCounts" :key="k">
+                  <div class="rounded-xl bg-white/5 ring-1 ring-white/10 px-3 py-2">
+                    <div class="text-[10px] uppercase tracking-wider text-indigo-300/80" x-text="k"></div>
+                    <div class="text-lg font-bold font-mono mt-0.5" x-text="c"></div>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Dial: confidence + risk -->
+            <div class="flex sm:flex-col items-center gap-4 sm:gap-3 sm:min-w-[160px]">
+              <!-- Confidence radial -->
+              <div class="relative size-28 sm:size-32 shrink-0">
+                <svg class="absolute inset-0" viewBox="0 0 36 36">
+                  <path d="M18 2.5 a 15.5 15.5 0 0 1 0 31 a 15.5 15.5 0 0 1 0 -31" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3"/>
+                  <path :d="'M18 2.5 a 15.5 15.5 0 0 1 0 31 a 15.5 15.5 0 0 1 0 -31'"
+                    fill="none" stroke="url(#conf-gradient)" stroke-width="3" stroke-linecap="round"
+                    :stroke-dasharray="`${(report.executive_summary.confidence*100).toFixed(0)} 100`"/>
+                  <defs>
+                    <linearGradient id="conf-gradient" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stop-color="#10b981"/>
+                      <stop offset="100%" stop-color="#6366f1"/>
+                    </linearGradient>
+                  </defs>
+                </svg>
+                <div class="absolute inset-0 flex flex-col items-center justify-center">
+                  <div class="text-2xl font-bold font-mono" x-text="(report.executive_summary.confidence*100).toFixed(0)"></div>
+                  <div class="text-[9px] uppercase tracking-wider text-indigo-300/80">Güven</div>
+                </div>
+              </div>
+              <!-- Risk pill -->
+              <div class="flex flex-col items-center">
+                <div class="text-[10px] uppercase tracking-wider text-indigo-300/80 mb-1">Risk Seviyesi</div>
+                <div class="px-4 py-1.5 rounded-full text-sm font-bold uppercase tracking-wider"
+                     :class="riskHeroClass(report.executive_summary.risk_level)"
+                     x-text="report.executive_summary.risk_level"></div>
+                <div class="text-[10px] text-slate-400 mt-1.5">
+                  <span x-text="sources.length"></span> kaynak ·
+                  <span x-text="(report.admiralty_findings || []).length"></span> kodlu bulgu
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+
       <!-- ===== NATO/IC standardı kapsamlı Markdown brief (LLM varsa) ===== -->
       <template x-if="job.status === 'done' && intelligenceBrief">
         <div class="mt-6 rounded-2xl bg-gradient-to-br from-indigo-50 to-violet-50 ring-1 ring-indigo-200 overflow-hidden"
@@ -550,12 +606,33 @@
             </div>
 
             <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-4">
-              <div class="text-[11px] uppercase tracking-widest text-brand-600 font-semibold">Görsel ters arama</div>
+              <div class="text-[11px] uppercase tracking-widest text-brand-600 font-semibold">Görsel ters arama + EXIF</div>
               <input type="url" x-model="imgUrl" placeholder="https://…/image.jpg" class="mt-2 w-full rounded-lg bg-slate-50 ring-1 ring-slate-200 px-2.5 py-1.5 text-xs" />
               <div class="mt-2 flex flex-wrap gap-1.5 text-[11px]">
                 <a :href="`https://lens.google.com/uploadbyurl?url=${encodeURIComponent(imgUrl)}`" target="_blank" class="px-2 py-1 rounded ring-1 ring-slate-200 hover:bg-slate-50">Lens</a>
                 <a :href="`https://yandex.com/images/search?rpt=imageview&url=${encodeURIComponent(imgUrl)}`" target="_blank" class="px-2 py-1 rounded ring-1 ring-slate-200 hover:bg-slate-50">Yandex</a>
                 <a :href="`https://www.tineye.com/search?url=${encodeURIComponent(imgUrl)}`" target="_blank" class="px-2 py-1 rounded ring-1 ring-slate-200 hover:bg-slate-50">TinEye</a>
+              </div>
+              <!-- Upload + EXIF (A9 IMINT) -->
+              <div class="mt-3 pt-3 border-t border-slate-100">
+                <div class="text-[10px] uppercase tracking-wider text-slate-500 mb-1.5">Dosya yükle (EXIF + GPS)</div>
+                <input type="file" accept="image/*" @change="uploadImage($event)" class="text-[11px] w-full file:mr-2 file:rounded-md file:border-0 file:bg-brand-50 file:text-brand-700 file:px-2 file:py-1 file:text-[11px]" />
+                <div x-show="imgUploading" class="mt-2 text-[11px] text-slate-500">Yükleniyor + EXIF okunuyor…</div>
+                <template x-if="imgExif && imgExif.has_exif">
+                  <div class="mt-2 rounded-lg bg-slate-50 ring-1 ring-slate-200 p-2 text-[11px] space-y-0.5">
+                    <div x-show="imgExif.camera"><span class="text-slate-500">📷 Kamera:</span> <span class="font-mono" x-text="imgExif.camera"></span></div>
+                    <div x-show="imgExif.taken_at"><span class="text-slate-500">📅 Tarih:</span> <span class="font-mono" x-text="imgExif.taken_at"></span></div>
+                    <div x-show="imgExif.software"><span class="text-slate-500">🛠 Yazılım:</span> <span class="font-mono" x-text="imgExif.software"></span></div>
+                    <div x-show="imgExif.gps" class="text-rose-700">
+                      <span class="text-slate-500">📍 GPS:</span>
+                      <a :href="imgExif.gps ? `https://www.google.com/maps?q=${imgExif.gps.lat},${imgExif.gps.lon}` : '#'" target="_blank" class="font-mono hover:underline" x-text="imgExif.gps ? `${imgExif.gps.lat.toFixed(5)}, ${imgExif.gps.lon.toFixed(5)}` : ''"></a>
+                    </div>
+                    <div class="pt-1 mt-1 border-t border-slate-200 text-[10px] text-slate-400">
+                      <span x-show="imgUrl">Otomatik ters arama linkleri yukarıda hazır.</span>
+                    </div>
+                  </div>
+                </template>
+                <div x-show="imgExif && !imgExif.has_exif" class="mt-2 text-[11px] text-slate-400 italic">EXIF bulunamadı (silinmiş veya hiç yoktu).</div>
               </div>
             </div>
 
@@ -584,6 +661,7 @@
   function reportView(jobId) {
     return {
       jobId, job: null, report: null, sources: [], imgUrl: '',
+      imgExif: null, imgUploading: false,
       intelligenceBrief: '', renderedBrief: '',
       kindFilter: '', showAllSources: false,
       geopoints: [], _map: null,
@@ -619,6 +697,37 @@
             }
           }
         } catch (e) {}
+      },
+      async uploadImage(event) {
+        const file = event?.target?.files?.[0];
+        if (!file) return;
+        this.imgUploading = true;
+        this.imgExif = null;
+        try {
+          const fd = new FormData();
+          fd.append('file', file);
+          fd.append('ttl', '1h');
+          const res = await fetch('/api/image/upload', { method: 'POST', body: fd, credentials: 'include' });
+          if (!res.ok) {
+            this.imgExif = { has_exif: false };
+            return;
+          }
+          const data = await res.json();
+          this.imgUrl = data.image_url || '';
+          this.imgExif = data.exif || { has_exif: false };
+          // Eğer GPS varsa harita'ya marker ekle
+          if (this.imgExif?.gps && this._map && typeof L !== 'undefined') {
+            const m = L.circleMarker([this.imgExif.gps.lat, this.imgExif.gps.lon], {
+              radius: 10, color: '#fff', weight: 3, fillColor: '#ef4444', fillOpacity: 0.9
+            }).addTo(this._map);
+            m.bindPopup(`<strong>📷 EXIF GPS</strong><br/>${this.imgExif.camera || 'Kamera ?'}<br/>${this.imgExif.taken_at || ''}`);
+            this._map.setView([this.imgExif.gps.lat, this.imgExif.gps.lon], 14);
+          }
+        } catch (e) {
+          this.imgExif = { has_exif: false };
+        } finally {
+          this.imgUploading = false;
+        }
       },
       renderMap() {
         if (!this.geopoints.length || typeof L === 'undefined') return;
@@ -683,6 +792,27 @@
         const c = {};
         for (const s of this.sources) c[s.kind] = (c[s.kind] || 0) + 1;
         return c;
+      },
+      get vectorCounts() {
+        // kind → NATO/IC vector mapping (analyzer.py _KIND_TO_ADMIRALTY ile uyumlu)
+        const map = {
+          'wiki': 'GENERAL', 'news': 'GENERAL', 'archive': 'GENERAL', 'web': 'GENERAL',
+          'code': 'PERSINT', 'profile': 'PERSINT', 'social': 'PERSINT',
+          'cybint': 'CORPINT', 'sanction': 'CORPINT', 'attack_surface': 'CORPINT',
+          'financial': 'CORPINT', 'threat_exposure': 'CORPINT', 'corp_registry': 'CORPINT',
+          'link_signal': 'LINKINT',
+        };
+        const counts = { 'PERSINT': 0, 'CORPINT': 0, 'LINKINT': 0, 'GENERAL': 0 };
+        for (const s of this.sources) {
+          const v = map[s.kind] || 'GENERAL';
+          counts[v] = (counts[v] || 0) + 1;
+        }
+        return counts;
+      },
+      riskHeroClass(level) {
+        return level === 'high'   ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/40' :
+               level === 'medium' ? 'bg-amber-400 text-amber-900 shadow-lg shadow-amber-400/30' :
+                                    'bg-emerald-400 text-emerald-900 shadow-lg shadow-emerald-400/30';
       },
       get maxGroup() { return Math.max(1, ...Object.values(this.groupCounts)); },
       get filteredSources() {

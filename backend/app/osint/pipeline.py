@@ -14,6 +14,7 @@ from .arxiv import search_arxiv
 from .base import SourceResult
 from .bing_search import search_bing
 from .brave_search import search_brave
+from .companies_house import search_companies_house
 from .crtsh import search_crtsh
 from .dns_records import lookup_dns
 from .dnstwist_check import check_typosquats
@@ -23,8 +24,10 @@ from .github_oss import search_github
 from .hackernews import search_hn
 from .mojeek_search import search_mojeek
 from .person_enrich import enrich_with_variations
+from .ransomwatch import check_ransomwatch
 from .reddit import search_reddit
 from .sanctions import search_sanctions
+from .sec_edgar import search_sec_edgar
 from .serper_search import search_serper
 from .social_probe import probe_username
 from .tavily_search import search_tavily
@@ -108,6 +111,11 @@ async def _web_pass(
     if kind in ("person", "organization", "auto"):
         tasks.append(_safe("person_enrich", enrich_with_variations(raw_target, kind)))
         tasks.append(_safe("sanctions", search_sanctions(raw_target, kind=kind if kind != "auto" else "person")))
+    if kind in ("organization", "auto") and not raw_target.startswith("@"):
+        tasks.append(_safe("sec_edgar", search_sec_edgar(raw_target)))
+        tasks.append(_safe("ransomwatch", check_ransomwatch(raw_target)))
+        if keys.get("companies_house"):
+            tasks.append(_safe("companies_house", search_companies_house(raw_target, keys["companies_house"])))
 
     chunks = await asyncio.gather(*tasks)
     flat: list[SourceResult] = []

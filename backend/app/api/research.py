@@ -142,6 +142,7 @@ def _run_job(job_id: int) -> None:
             "brave": _get_search_key(job.user_id, "brave", db),
             "tavily": _get_search_key(job.user_id, "tavily", db),
             "serper": _get_search_key(job.user_id, "serper", db),
+            "companies_house": _get_search_key(job.user_id, "companies_house", db),
         }
         try:
             sources = asyncio.run(

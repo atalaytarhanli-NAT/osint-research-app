@@ -461,6 +461,9 @@ _KIND_TO_ADMIRALTY = {
     "sanction": ("A", "1", "CORPINT"),     # OpenSanctions — government-grade
     "attack_surface": ("B", "2", "CORPINT"),  # dnstwist registered domain
     "link_signal": ("C", "2", "LINKINT"),  # Tracking ID cross-domain match
+    "financial": ("A", "1", "CORPINT"),    # SEC EDGAR — verifiable filings
+    "threat_exposure": ("A", "1", "CORPINT"),  # Ransomwatch — public victim
+    "corp_registry": ("A", "1", "CORPINT"),    # Companies House — official registry
 }
 
 
@@ -528,6 +531,19 @@ def _rule_based_risk_matrix(sources: list[dict], groups: dict[str, list[int]], r
             "category": "cyber",
             "mitigation": "DNS TXT kayıtlarına SPF v=spf1 ve DMARC v=DMARC1 p=quarantine ekle.",
             "source_indices": cybint_idx[:1],
+        })
+    ransom_idx = [i for i, s in enumerate(sources) if s.get("kind") == "threat_exposure"]
+    if ransom_idx:
+        groups_seen = {(sources[i].get("raw") or {}).get("group", "?") for i in ransom_idx}
+        matrix.append({
+            "risk": f"Ransomware leak sitelerinde isim geçti ({len(ransom_idx)} kayıt, gruplar: {', '.join(list(groups_seen)[:3])})",
+            "likelihood": 5,
+            "impact": 5,
+            "score": 25,
+            "category": "cyber",
+            "mitigation": "Acil incident response başlat: hangi veriler sızdı tespit et, "
+            "düzenleyici bildirim (KVKK/GDPR), müşteri/çalışan iletişimi, SOC monitoring artır.",
+            "source_indices": ransom_idx[:3],
         })
     cross_domain_tracking = [
         i for i, s in enumerate(sources)
@@ -715,6 +731,8 @@ def _rule_based_report(target: str, kind: str, sources: list[dict]) -> dict[str,
     # NATO/IC: yaptırım/typosquat → kritik risk
     if any(s.get("kind") == "sanction" for s in sources):
         risk_score = max(risk_score, 0.95)  # forces "high"
+    if any(s.get("kind") == "threat_exposure" for s in sources):
+        risk_score = max(risk_score, 0.95)  # ransomware victim → high
     if any(s.get("kind") == "attack_surface" for s in sources):
         risk_score = max(risk_score, 0.7)
     risk_level = _risk_level(min(risk_score, 1.0))
