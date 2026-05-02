@@ -168,6 +168,32 @@ PROVIDERS: dict[str, ProviderSpec] = {
         style="search",
         kind="search",
     ),
+    "google_cse": ProviderSpec(
+        id="google_cse",
+        name="Google Programmable Search",
+        open_source=False,
+        free_tier=True,
+        default_model="",
+        models=[],
+        docs_url="https://developers.google.com/custom-search/v1/overview",
+        key_hint="<API_KEY>:<CX_ID>",
+        base_url="https://www.googleapis.com/customsearch/v1",
+        style="search",
+        kind="search",
+    ),
+    "companies_house": ProviderSpec(
+        id="companies_house",
+        name="UK Companies House",
+        open_source=False,
+        free_tier=True,
+        default_model="",
+        models=[],
+        docs_url="https://developer.company-information.service.gov.uk/",
+        key_hint="API key (UUID format)",
+        base_url="https://api.company-information.service.gov.uk",
+        style="search",
+        kind="search",
+    ),
 }
 
 

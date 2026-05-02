@@ -21,6 +21,7 @@ from .dnstwist_check import check_typosquats
 from .gdelt import search_gdelt
 from .geolocation import extract_geopoints
 from .github_oss import search_github
+from .google_cse import search_google_cse
 from .hackernews import search_hn
 from .mojeek_search import search_mojeek
 from .person_enrich import enrich_with_variations
@@ -59,12 +60,14 @@ def detect_kind(target: str, hint: str = "auto") -> str:
     return "keyword"
 
 
-async def _safe(name: str, coro):
+async def _safe(name: str, coro) -> tuple[str, list, str | None]:
+    """(engine_name, results, error|None) döndürür — diagnostics için."""
     try:
-        return await coro
+        results = await coro
+        return name, results or [], None
     except Exception as exc:
         log.warning("%s failed: %s", name, exc)
-        return []
+        return name, [], str(exc)[:200]
 
 
 def _quote_for_search(target: str, kind: str) -> str:
@@ -104,6 +107,8 @@ async def _web_pass(
         tasks.append(_safe("tavily", search_tavily(query, keys["tavily"])))
     if keys.get("serper"):
         tasks.append(_safe("serper", search_serper(query, keys["serper"])))
+    if keys.get("google_cse"):
+        tasks.append(_safe("google_cse", search_google_cse(query, keys["google_cse"])))
     if kind == "url":
         tasks.append(_safe("crtsh", search_crtsh(raw_target)))
         tasks.append(_safe("dns", lookup_dns(raw_target)))
@@ -119,12 +124,14 @@ async def _web_pass(
 
     chunks = await asyncio.gather(*tasks)
     flat: list[SourceResult] = []
-    for chunk in chunks:
-        flat.extend(chunk)
-    return flat
+    diag: dict[str, dict] = {}
+    for name, results, err in chunks:
+        flat.extend(results)
+        diag[name] = {"count": len(results), "error": err}
+    return flat, diag
 
 
-async def _social_pass(query: str, raw_target: str, kind: str) -> list[SourceResult]:
+async def _social_pass(query: str, raw_target: str, kind: str):
     tasks = [
         _safe("hn", search_hn(query)),
         _safe("reddit", search_reddit(query)),
@@ -133,9 +140,11 @@ async def _social_pass(query: str, raw_target: str, kind: str) -> list[SourceRes
         tasks.append(_safe("social_probe", probe_username(raw_target)))
     chunks = await asyncio.gather(*tasks)
     flat: list[SourceResult] = []
-    for chunk in chunks:
-        flat.extend(chunk)
-    return flat
+    diag: dict[str, dict] = {}
+    for name, results, err in chunks:
+        flat.extend(results)
+        diag[name] = {"count": len(results), "error": err}
+    return flat, diag
 
 
 _STOPWORDS = {
@@ -152,33 +161,59 @@ def _significant_words(text: str) -> list[str]:
     return [w.lower() for w in words if w.lower() not in _STOPWORDS]
 
 
+_TR_FOLD = str.maketrans({
+    "ç": "c", "Ç": "c", "ğ": "g", "Ğ": "g", "ı": "i", "I": "i",
+    "İ": "i", "ö": "o", "Ö": "o", "ş": "s", "Ş": "s", "ü": "u", "Ü": "u",
+})
+
+
+def _fold(text: str) -> str:
+    """Türkçe→Latin transliterasyon + lowercase. Filter eşleşmesi için."""
+    return (text or "").translate(_TR_FOLD).lower()
+
+
 def _filter_relevance(target: str, kind: str, sources: list[SourceResult]) -> list[SourceResult]:
     """Çok kelimeli isim/kurum hedeflerinde, başlık+snippet+url'de hedefin
     anlamlı kelimelerinden hiçbiri geçmiyorsa o kaynağı düşür.
 
-    Bu, Render IP'leriyle yapılan "Atalay Tarhanlı" araması gibi durumlarda
-    SERP'lerin döndürdüğü ilgisiz sonuçları (haber, başka kişiler) eler."""
+    Türkçe → Latin fold tolerasyonu: "Tarhanlı" snippet'ta "Tarhanli" olarak
+    görünse de eşleşir. Bu olmazsa Türkçe karakterli aramalar 0 döndürür.
+
+    Filter sonrası 1'den az sonuç kalırsa filter'ı bypass eder (kullanıcının
+    kendini bulamamasından iyi)."""
     if kind not in ("person", "organization"):
         return sources
-    sig = _significant_words(target)
-    if len(sig) < 2:
+    sig_raw = _significant_words(target)
+    if len(sig_raw) < 2:
         return sources
+    sig = [_fold(w) for w in sig_raw]
 
     out: list[SourceResult] = []
+    target_fold = _fold(target).replace(" ", "")
     for s in sources:
         # Yetkili kaynaklar (wiki/wikidata/wayback/archive) her zaman geçer
-        if s.kind in ("wiki", "archive"):
+        if s.kind in ("wiki", "archive", "cybint", "sanction", "attack_surface",
+                      "financial", "threat_exposure", "corp_registry", "link_signal"):
             out.append(s)
             continue
         # social_probe sonuçları zaten username'den geldi, ilgili
-        if s.source.startswith("social:"):
+        if s.source.startswith("social:") or s.source.startswith("enrich:"):
             out.append(s)
             continue
-        text = " ".join([s.title or "", s.snippet or "", s.url or ""]).lower()
+        text = _fold(" ".join([s.title or "", s.snippet or "", s.url or ""]))
         if any(w in text for w in sig):
+            out.append(s)
+        elif target_fold and target_fold in text.replace(" ", "").replace("-", "").replace("_", ""):
+            # URL slug eşleşmesi: "atalaytarhanli" pattern URL'de varsa kabul
             out.append(s)
         else:
             log.debug("dropped irrelevant: %s — %s", s.source, s.title[:80] if s.title else s.url)
+
+    # Empty fallback: filter 0 döndürdüyse filter'ı atla — engine'lar zaten
+    # kullanıcı sorgusuna cevap verdi, drop etmek kullanıcıyı yanıltır.
+    if not out and sources:
+        log.warning("relevance filter zeroed all %d sources for %r — bypassing filter", len(sources), target)
+        return sources
     log.info("relevance filter: %d → %d (kind=%s, target=%r)", len(sources), len(out), kind, target)
     return out
 
@@ -221,14 +256,18 @@ async def _second_pass(
             tasks.append(_safe("tavily2", search_tavily(q, keys["tavily"], max_results=6)))
         if keys.get("serper"):
             tasks.append(_safe("serper2", search_serper(q, keys["serper"], max_results=6)))
+        if keys.get("google_cse"):
+            tasks.append(_safe("google_cse2", search_google_cse(q, keys["google_cse"], max_results=6)))
     chunks = await asyncio.gather(*tasks)
     flat: list[SourceResult] = []
-    for chunk in chunks:
-        flat.extend(chunk)
+    diag: dict[str, dict] = {}
+    for name, results, err in chunks:
+        flat.extend(results)
+        diag[name] = {"count": len(results), "error": err}
     for s in flat:
         s.confidence = max(0.3, s.confidence - 0.1)
         s.raw["pass"] = 2
-    return flat
+    return flat, diag
 
 
 def _dedupe(items: list[SourceResult]) -> list[dict[str, Any]]:
@@ -249,22 +288,27 @@ async def run_pipeline(
     intensity: str = "deep",
     scope: str = "all",
     search_keys: dict[str, str] | None = None,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict]:
     """
     intensity: 'quick' (1 pass) | 'deep' (2 pass)
     scope:     'web' | 'social' | 'all'
-    search_keys: {'brave': '...', 'tavily': '...', 'serper': '...'} — opsiyonel
-                 API-tabanlı arama motorları (Render'da scraping fail ettiğinde
-                 fallback). Hangisi varsa o çalıştırılır.
+    search_keys: {'brave': '...', 'tavily': '...', 'serper': '...', 'google_cse': '...:...'}
+
+    Döndürür: (sources, diagnostics) — diagnostics motor başına sayı + hata.
     """
     kind = detect_kind(target, kind_hint)
     query = _quote_for_search(target, kind)
 
     first: list[SourceResult] = []
+    diag_combined: dict[str, dict] = {}
     if scope in ("web", "all"):
-        first.extend(await _web_pass(query, target, kind, search_keys=search_keys))
+        results, diag = await _web_pass(query, target, kind, search_keys=search_keys)
+        first.extend(results)
+        diag_combined.update({f"web/{k}": v for k, v in diag.items()})
     if scope in ("social", "all"):
-        first.extend(await _social_pass(query, target, kind))
+        results, diag = await _social_pass(query, target, kind)
+        first.extend(results)
+        diag_combined.update({f"social/{k}": v for k, v in diag.items()})
 
     enabled = [k for k, v in (search_keys or {}).items() if v]
     log.info("OSINT first pass: %d sources for %r (scope=%s, search APIs=%s)",
@@ -273,9 +317,10 @@ async def run_pipeline(
     if intensity == "deep" and scope in ("web", "all"):
         refined = _refine_queries(target, first, k=3)
         log.info("OSINT refined queries: %s", refined)
-        second = await _second_pass(query, refined, search_keys=search_keys)
-        log.info("OSINT second pass: %d sources", len(second))
-        all_results = first + second
+        second_results, diag = await _second_pass(query, refined, search_keys=search_keys)
+        diag_combined.update({f"pass2/{k}": v for k, v in diag.items()})
+        log.info("OSINT second pass: %d sources", len(second_results))
+        all_results = first + second_results
     else:
         all_results = first
 
@@ -288,7 +333,18 @@ async def run_pipeline(
         deduped.extend(r.to_dict() for r in tracking_results)
         log.info("OSINT tracking IDs: %d signals extracted", len(tracking_results))
 
-    return deduped
+    diagnostics = {
+        "engines": diag_combined,
+        "totals": {
+            "raw": len(all_results),
+            "after_filter": len(filtered),
+            "after_dedupe": len(deduped),
+        },
+        "engines_with_results": sum(1 for v in diag_combined.values() if v["count"] > 0),
+        "engines_failed": sum(1 for v in diag_combined.values() if v.get("error")),
+        "engines_zero": sum(1 for v in diag_combined.values() if v["count"] == 0 and not v.get("error")),
+    }
+    return deduped, diagnostics
 
 
 async def collect_geopoints(target: str, sources: list[dict[str, Any]]) -> list[dict]:

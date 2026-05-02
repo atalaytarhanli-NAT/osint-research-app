@@ -239,6 +239,45 @@
               </ul>
             </div>
 
+            <!-- Engine Diagnostics (şeffaflık: hangi motor kaç sonuç döndürdü) -->
+            <div x-show="diagnostics && diagnostics.engines" class="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
+              <button @click="showDiag = !showDiag" class="w-full flex items-center justify-between gap-2">
+                <div class="text-left">
+                  <div class="text-[11px] uppercase tracking-widest text-brand-600 font-semibold">Tarama Şeffaflığı</div>
+                  <p class="mt-1 text-[11px] text-slate-500">
+                    <span class="font-semibold text-emerald-600" x-text="diagnostics?.engines_with_results || 0"></span> motor
+                    sonuç döndürdü ·
+                    <span class="font-semibold text-rose-600" x-text="diagnostics?.engines_failed || 0"></span> hata ·
+                    <span class="font-semibold text-amber-600" x-text="diagnostics?.engines_zero || 0"></span> boş
+                  </p>
+                </div>
+                <svg :class="showDiag ? 'rotate-180' : ''" class="size-4 transition text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </button>
+              <div x-show="showDiag" x-transition class="mt-3 grid sm:grid-cols-2 gap-1.5">
+                <template x-for="(info, name) in (diagnostics?.engines || {})" :key="name">
+                  <div class="flex items-center gap-2 rounded-lg ring-1 px-2 py-1.5 text-xs"
+                       :class="info.error ? 'bg-rose-50 ring-rose-200' : (info.count > 0 ? 'bg-emerald-50 ring-emerald-200' : 'bg-slate-50 ring-slate-200')">
+                    <span class="font-mono text-[10px]" x-text="name"></span>
+                    <span class="ml-auto font-mono font-semibold" :class="info.count > 0 ? 'text-emerald-700' : 'text-slate-400'" x-text="info.count"></span>
+                    <span x-show="info.error" class="text-[10px] text-rose-600 truncate max-w-[200px]" :title="info.error">⚠</span>
+                  </div>
+                </template>
+              </div>
+              <!-- Boş sonuç yardım mesajı: hiçbir SERP scrape motoru çalışmadıysa -->
+              <div x-show="diagnostics && sources.length < 5 && !showDiag" class="mt-3 rounded-xl bg-amber-50 ring-1 ring-amber-200 p-3 text-xs">
+                <div class="font-semibold text-amber-800">⚠ Az sonuç çıktı</div>
+                <p class="mt-1 text-amber-700">
+                  Render datacenter IP'leri DDG/Bing/Yandex tarafından bot olarak işaretlenmiş olabilir.
+                  Şeffaflık panelini açıp hangi motorların başarısız olduğunu gör.
+                </p>
+                <p class="mt-2 text-amber-700">
+                  <strong>Çözüm:</strong> Settings'ten bir Search API key ekle —
+                  <strong>Tavily</strong> (1k/ay ücretsiz, en kolay), <strong>Google Programmable Search</strong>
+                  (100/gün ücretsiz, Google sonuçları), veya <strong>Serper</strong> ($5/100k).
+                </p>
+              </div>
+            </div>
+
             <!-- Bulunan Kaynaklar (LLM şeffaflığı: tüm kaynaklar burada) -->
             <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
               <div class="flex flex-wrap items-center gap-2">
@@ -662,6 +701,7 @@
     return {
       jobId, job: null, report: null, sources: [], imgUrl: '',
       imgExif: null, imgUploading: false,
+      diagnostics: null, showDiag: false,
       intelligenceBrief: '', renderedBrief: '',
       kindFilter: '', showAllSources: false,
       geopoints: [], _map: null,
@@ -673,6 +713,7 @@
             this.report = this.job.result.report;
             this.sources = (this.job.result.sources || []).map((s, i) => ({...s, _idx: i}));
             this.geopoints = this.job.result.geopoints || [];
+            this.diagnostics = this.job.result.diagnostics || null;
             this.intelligenceBrief = this.job.result.intelligence_brief || '';
             this.$nextTick(() => this.renderMap());
             this.renderedBrief = this.intelligenceBrief

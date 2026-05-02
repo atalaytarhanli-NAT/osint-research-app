@@ -142,10 +142,11 @@ def _run_job(job_id: int) -> None:
             "brave": _get_search_key(job.user_id, "brave", db),
             "tavily": _get_search_key(job.user_id, "tavily", db),
             "serper": _get_search_key(job.user_id, "serper", db),
+            "google_cse": _get_search_key(job.user_id, "google_cse", db),
             "companies_house": _get_search_key(job.user_id, "companies_house", db),
         }
         try:
-            sources = asyncio.run(
+            sources, diagnostics = asyncio.run(
                 run_pipeline(
                     job.target,
                     job.kind,
@@ -187,6 +188,7 @@ def _run_job(job_id: int) -> None:
                     "report": report,
                     "intelligence_brief": intelligence_brief,
                     "geopoints": geopoints,
+                    "diagnostics": diagnostics,
                 },
                 ensure_ascii=False,
                 default=str,
