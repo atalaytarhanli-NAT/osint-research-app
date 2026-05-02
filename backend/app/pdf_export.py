@@ -2,8 +2,8 @@
 yapılandırılmış, text-search'lü, sayfa-uyumlu profesyonel PDF üretir.
 
 xhtml2pdf (pure Python) kullanır — Render Linux'ta sorunsuz kurulur.
-Türkçe karakterler için "DejaVu Sans" font ailesi öncelikli (sistem fontu
-yoksa Arial/Helvetica fallback).
+DejaVu Sans TTF font'u repo'ya gömülü (backend/app/static/fonts/) — Türkçe
+karakterler (ş, ğ, ı, ü, ö, ç) sorunsuz render edilir.
 """
 
 from __future__ import annotations
@@ -11,12 +11,51 @@ from __future__ import annotations
 import html as html_lib
 import io
 import logging
+import os
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 
 log = logging.getLogger("pdf_export")
+
+
+_FONT_DIR = Path(__file__).parent / "static" / "fonts"
+_FONT_REGISTERED = False
+
+
+def _ensure_fonts_registered() -> bool:
+    """DejaVu Sans TTF font'larını reportlab'a tek seferde kayıt et.
+    Türkçe karakter render'i için zorunlu (xhtml2pdf default font ASCII only)."""
+    global _FONT_REGISTERED
+    if _FONT_REGISTERED:
+        return True
+    try:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+    except ImportError:
+        log.warning("reportlab not available, fonts not registered")
+        return False
+
+    regular = _FONT_DIR / "DejaVuSans.ttf"
+    bold = _FONT_DIR / "DejaVuSans-Bold.ttf"
+    if not regular.exists():
+        log.warning("DejaVuSans.ttf not found at %s", regular)
+        return False
+    try:
+        pdfmetrics.registerFont(TTFont("DejaVu", str(regular)))
+        if bold.exists():
+            pdfmetrics.registerFont(TTFont("DejaVu-Bold", str(bold)))
+            from reportlab.pdfbase.pdfmetrics import registerFontFamily
+            registerFontFamily("DejaVu", normal="DejaVu", bold="DejaVu-Bold",
+                               italic="DejaVu", boldItalic="DejaVu-Bold")
+        _FONT_REGISTERED = True
+        log.info("DejaVu fonts registered (regular + %s)", "bold" if bold.exists() else "no-bold")
+        return True
+    except Exception as exc:
+        log.warning("Font registration failed: %s", exc)
+        return False
 
 
 PDF_CSS = """
@@ -29,7 +68,7 @@ PDF_CSS = """
   }
 }
 body {
-  font-family: "DejaVu Sans", Arial, Helvetica, sans-serif;
+  font-family: DejaVu, "DejaVu Sans", Arial, Helvetica, sans-serif;
   font-size: 10pt; line-height: 1.5; color: #1e293b;
 }
 h1 {
@@ -349,6 +388,8 @@ def render_pdf(
     """Generate PDF bytes from research result. Returns raw bytes."""
     from xhtml2pdf import pisa  # lazy import (large dep)
     import markdown as md_lib
+
+    _ensure_fonts_registered()  # DejaVu Sans (Türkçe karakter)
 
     cover_html = _render_cover(target, kind, report, sources, used_llm)
 

@@ -194,15 +194,19 @@ def _filter_relevance(target: str, kind: str, sources: list[SourceResult]) -> li
     out: list[SourceResult] = []
     target_fold = _fold(target).replace(" ", "")
     for s in sources:
-        # Yetkili kaynaklar her zaman geçer
-        if s.kind in ("wiki", "archive", "cybint", "sanction", "attack_surface",
-                      "financial", "threat_exposure", "corp_registry", "link_signal"):
+        # YAPISAL kaynaklar her zaman geçer — bu modüller target'la doğrudan
+        # sorgulandı, snippet'larında target adı geçmese de hedefe aittir
+        # (DNS records target domain için, sanction target adıyla query, vs.)
+        if s.kind in ("cybint", "sanction", "attack_surface", "financial",
+                      "threat_exposure", "corp_registry", "link_signal"):
             out.append(s)
             continue
         # social_probe (Sherlock-style) sonuçları zaten username'den geldi
         if s.source.startswith("social:"):
             out.append(s)
             continue
+        # wiki/archive/web/news tümü AND check'e tabi — Wikipedia "Turgay Şahan"
+        # sorgusuna "Turgay Bahadır" döndürebiliyor; eş isim çakışmasını eler
         text = _fold(" ".join([s.title or "", s.snippet or "", s.url or ""]))
         # AND: tüm anlamlı kelimeler text'te bulunmalı (eş isim çakışmasını eler)
         if all(w in text for w in sig):

@@ -8,3 +8,8 @@
 
 - **Son commit:** 07dbe15 — feat: Stop hook auto-log + PDF rapor çıktısı
 - **Working tree:** (working tree clean)
+
+## 2026-05-02T14:20:49Z
+
+- **Son commit:** 45acae2 — fix: PDF rapor — server-side render (xhtml2pdf) ile gerçek belge
+- **Working tree:** (working tree clean)
