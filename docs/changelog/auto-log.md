@@ -18,3 +18,8 @@
 
 - **Son commit:** 758b19f — fix: PDF Türkçe karakter (DejaVu Sans) + filter wiki AND check
 - **Working tree:** (working tree clean)
+
+## 2026-05-02T15:33:30Z
+
+- **Son commit:** 212a33d — feat: yüz/görsel arama (Faz 1) — 10 dış adaptör entegre + osint_face_search standalone
+- **Working tree:** (working tree clean)
