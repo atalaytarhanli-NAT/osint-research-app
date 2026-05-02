@@ -229,6 +229,86 @@ def _collect_face_keys(user_id: int, db: Session) -> dict[str, str | None]:
     return out
 
 
+class FaceSearchUrlIn(BaseModel):
+    url: HttpUrl
+    adapters: Optional[str] = None
+    timeout_seconds: int = 120
+
+
+@router.post("/face-search-url")
+async def face_search_url(
+    data: FaceSearchUrlIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Image URL ile yüz araması — aday görsellerden seçilen kişiyi
+    10 dış adaptöre paralel sorgular (ek upload yok, URL'den indirir)."""
+    url = str(data.url)
+    if len(url) > 2000:
+        raise HTTPException(status_code=400, detail="URL çok uzun")
+
+    # URL'den image bytes indir
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as c:
+            r = await c.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code != 200:
+                raise HTTPException(status_code=400, detail=f"Image fetch HTTP {r.status_code}")
+            content = r.content
+            if len(content) > MAX_BYTES:
+                raise HTTPException(status_code=413, detail="Image > 10 MB")
+            if len(content) < 32:
+                raise HTTPException(status_code=400, detail="Image çok küçük / boş")
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=400, detail=f"Image fetch hata: {exc}")
+
+    keys = _collect_face_keys(user.id, db)
+    orch = AdapterOrchestrator(api_keys=keys)
+
+    adapter_list: list[str] | None = None
+    if data.adapters:
+        adapter_list = [a.strip() for a in data.adapters.split(",") if a.strip()]
+
+    exif_data = extract_exif(content)
+    report = await orch.search_all(
+        image_bytes=content,
+        adapters=adapter_list,
+        timeout_seconds=data.timeout_seconds,
+    )
+
+    log.info(
+        "face_search_url user=%s url=%s success=%s matches=%d",
+        user.id, url[:80], report.successful, report.total_matches,
+    )
+
+    return {
+        "exif": exif_data,
+        "image_url": url,
+        "requested_adapters": report.requested_adapters,
+        "successful": report.successful,
+        "failed": report.failed,
+        "total_matches": report.total_matches,
+        "total_elapsed_ms": report.total_elapsed_ms,
+        "aggregated": [
+            {
+                "url": r.url, "domain": r.domain, "title": r.title,
+                "sources": r.sources, "scores": r.scores,
+                "consensus_score": r.consensus_score,
+                "confidence": r.confidence.value,
+                "thumbnails": r.thumbnails[:3],
+            }
+            for r in report.aggregated[:50]
+        ],
+        "per_adapter": [
+            {
+                "source": resp.source, "success": resp.success,
+                "error": resp.error, "matches_count": len(resp.matches),
+                "elapsed_ms": resp.elapsed_ms,
+            }
+            for resp in report.raw_responses
+        ],
+    }
+
+
 @router.get("/face-search/adapters")
 def list_face_adapters(
     user: User = Depends(get_current_user),

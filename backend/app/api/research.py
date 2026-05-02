@@ -350,6 +350,26 @@ def delete_job(
     db.commit()
 
 
+@router.get("/{job_id}/image-candidates")
+async def image_candidates_for_job(
+    job_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bu rapor için aday görselleri getir — kullanıcı doğru kişiyi
+    seçince yüz aramasını o görselle başlatabilir."""
+    from ..osint.image_candidates import fetch_image_candidates
+    job = db.get(ResearchJob, job_id)
+    if job is None or job.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+    candidates = await fetch_image_candidates(
+        target=job.target,
+        kind=job.kind or "auto",
+        max_results=24,
+    )
+    return {"target": job.target, "kind": job.kind, "candidates": candidates}
+
+
 @router.get("/{job_id}/export.pdf")
 def export_pdf(
     job_id: int,

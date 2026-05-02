@@ -131,6 +131,69 @@
         </div>
       </template>
 
+      <!-- ===== Aday Görseller — kişi/kurum raporlarında, doğru kişiyi seçip yüz arama ===== -->
+      <template x-if="job.status === 'done' && (job.kind === 'person' || job.kind === 'organization' || job.kind === 'auto')">
+        <div class="mt-6 rounded-2xl bg-white ring-1 ring-amber-200 overflow-hidden"
+             x-data="{open: false}">
+          <button @click="open = !open; if (open && !imgCandidates.length) loadImageCandidates()"
+            class="w-full flex items-center justify-between gap-3 p-5 hover:bg-amber-50/30 transition">
+            <div class="flex items-center gap-3 text-left">
+              <div class="size-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 grid place-items-center text-white font-bold text-sm shrink-0">📸</div>
+              <div class="min-w-0">
+                <div class="text-sm font-semibold text-amber-900">Aday Görseller (örnek resimler)</div>
+                <div class="text-[11px] text-amber-700/80 truncate">Doğru kişiyi seç → o resimle yüz araması başlat</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <span x-show="imgCandidates.length" class="text-[10px] font-mono text-amber-700" x-text="`${imgCandidates.length} aday`"></span>
+              <svg :class="open ? 'rotate-180' : ''" class="size-4 text-amber-700 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </div>
+          </button>
+          <div x-show="open" x-transition class="border-t border-amber-200 p-5 bg-amber-50/10">
+            <div x-show="imgCandidatesBusy" class="text-center text-xs text-slate-500 py-6">
+              Aday görseller aranıyor (Bing/DDG)…
+            </div>
+            <div x-show="!imgCandidatesBusy && imgCandidates.length === 0" class="rounded-lg bg-amber-50 ring-1 ring-amber-200 p-3 text-xs text-amber-800">
+              Aday görsel bulunamadı (Render IP'leri image search'te captcha alabilir).
+              Manuel olarak yukarıdaki "Görsel ters arama" sekmesinden URL/dosya ile yüz araması yapabilirsin.
+            </div>
+            <div x-show="!imgCandidatesBusy && imgCandidates.length > 0">
+              <p class="text-xs text-slate-600 mb-3">
+                Aşağıdaki resimlerden hedefe ait olduğunu düşündüğünü <strong>tıkla</strong>:
+                o görselle 10 dış adaptör paralel yüz araması başlatılır.
+              </p>
+              <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+                <template x-for="(c, i) in imgCandidates" :key="i">
+                  <button type="button" @click="selectCandidate(c)" :disabled="faceSearchBusy"
+                    class="group relative aspect-square rounded-lg overflow-hidden ring-2 ring-transparent hover:ring-amber-500 hover:shadow-md transition bg-slate-100 disabled:opacity-50"
+                    :class="selectedCandidate?.full_url === c.full_url ? 'ring-amber-500 shadow-md' : ''">
+                    <img :src="c.thumb_url" referrerpolicy="no-referrer" loading="lazy"
+                      class="w-full h-full object-cover" />
+                    <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-1.5">
+                      <span class="text-[9px] text-white font-mono uppercase" x-text="c.engine"></span>
+                    </div>
+                    <div x-show="selectedCandidate?.full_url === c.full_url" class="absolute top-1 right-1 size-5 rounded-full bg-amber-500 grid place-items-center text-white text-[10px] font-bold">✓</div>
+                  </button>
+                </template>
+              </div>
+              <div x-show="selectedCandidate" class="mt-4 flex flex-col sm:flex-row items-start gap-3 rounded-lg bg-white ring-1 ring-amber-200 p-3">
+                <img x-show="selectedCandidate?.thumb_url" :src="selectedCandidate?.thumb_url" referrerpolicy="no-referrer"
+                  class="size-16 sm:size-24 object-cover rounded-md ring-1 ring-slate-200 shrink-0" />
+                <div class="flex-1 min-w-0">
+                  <div class="text-xs font-semibold text-slate-700" x-text="selectedCandidate?.title || '(başlıksız)'"></div>
+                  <div class="text-[10px] text-slate-400 font-mono truncate mt-0.5" x-text="selectedCandidate?.source_url || selectedCandidate?.full_url"></div>
+                  <button @click="runFaceSearchFromCandidate()" :disabled="faceSearchBusy"
+                    class="mt-2 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 disabled:opacity-50 text-white font-medium px-4 py-2 text-sm">
+                    <span x-show="!faceSearchBusy">🔍 Bu Resimle Yüz Araması Başlat</span>
+                    <span x-show="faceSearchBusy">Aranıyor…</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+
       <!-- ===== Daha Derin Analiz — iteratif derinleştirme formu ===== -->
       <template x-if="job.status === 'done' && report">
         <div class="mt-6 rounded-2xl bg-white ring-1 ring-emerald-200 overflow-hidden"
@@ -873,6 +936,7 @@
       diagnostics: null, showDiag: false,
       pdfBusy: false,
       refine: { handle: '', email: '', organization: '', location: '', phone: '', domain: '', note: '', busy: false, error: '' },
+      imgCandidates: [], imgCandidatesBusy: false, selectedCandidate: null,
       intelligenceBrief: '', renderedBrief: '',
       kindFilter: '', showAllSources: false,
       geopoints: [], _map: null,
@@ -1114,6 +1178,50 @@
           `## Sonuç`, r.conclusion,
         ].join('\n');
         navigator.clipboard.writeText(md);
+      },
+      async loadImageCandidates() {
+        if (this.imgCandidatesBusy) return;
+        this.imgCandidatesBusy = true;
+        try {
+          const r = await fetch(`/api/research/${this.jobId}/image-candidates`, { credentials: 'include' });
+          if (!r.ok) { this.imgCandidates = []; return; }
+          const data = await r.json();
+          this.imgCandidates = data.candidates || [];
+        } catch (e) {
+          this.imgCandidates = [];
+        } finally {
+          this.imgCandidatesBusy = false;
+        }
+      },
+      selectCandidate(c) {
+        this.selectedCandidate = c;
+      },
+      async runFaceSearchFromCandidate() {
+        if (!this.selectedCandidate || this.faceSearchBusy) return;
+        this.faceSearchBusy = true;
+        this.faceResults = null;
+        try {
+          const r = await fetch('/api/image/face-search-url', {
+            method: 'POST', credentials: 'include',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ url: this.selectedCandidate.full_url }),
+          });
+          if (!r.ok) {
+            const txt = await r.text().catch(() => '');
+            throw new Error(`HTTP ${r.status}: ${txt.slice(0, 200)}`);
+          }
+          this.faceResults = await r.json();
+          // Sonuç paneline scroll
+          this.$nextTick(() => {
+            document.querySelectorAll('[x-show*="faceResults"]').forEach(el => {
+              if (el.offsetParent) el.scrollIntoView({behavior: 'smooth', block: 'start'});
+            });
+          });
+        } catch (e) {
+          alert('Yüz araması hata aldı: ' + (e?.message || e));
+        } finally {
+          this.faceSearchBusy = false;
+        }
       },
       get refineCount() {
         const r = this.refine;
