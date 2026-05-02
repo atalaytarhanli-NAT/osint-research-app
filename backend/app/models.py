@@ -67,6 +67,14 @@ class ResearchJob(Base):
     )
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
+    # İteratif derinleştirme — kullanıcı bir raporda ek bilgi girip yeni
+    # daha hedefli arama yapabilir. parent_id zinciri kullanılır.
+    parent_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("research_jobs.id", ondelete="SET NULL"), index=True
+    )
+    extra_context: Mapped[Optional[str]] = mapped_column(Text)
+    """JSON string: {handle, email, organization, location, phone, domain, note}"""
+
     user: Mapped[User] = relationship(back_populates="jobs")
 
 

@@ -51,6 +51,18 @@ _PENDING_COLUMNS: list[tuple[str, str, str, str]] = [
         "VARCHAR(10) DEFAULT 'all' NOT NULL",
         "VARCHAR(10) DEFAULT 'all' NOT NULL",
     ),
+    (
+        "research_jobs",
+        "parent_id",
+        "INTEGER NULL REFERENCES research_jobs(id) ON DELETE SET NULL",
+        "INTEGER NULL REFERENCES research_jobs(id) ON DELETE SET NULL",
+    ),
+    (
+        "research_jobs",
+        "extra_context",
+        "TEXT NULL",
+        "TEXT NULL",
+    ),
 ]
 
 

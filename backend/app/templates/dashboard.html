@@ -233,6 +233,13 @@
           const j = p.get('job');
           this.activeJobId = j && /^\d+$/.test(j) ? parseInt(j, 10) : null;
         });
+        // iframe'den gelen 'open-report' mesajını dinle (Daha Derin Analiz)
+        window.addEventListener('message', async (ev) => {
+          if (ev?.data?.type === 'osint:open-report' && ev.data.jobId) {
+            await this.load();
+            this.openReport(ev.data.jobId);
+          }
+        });
       },
       async load() { try { this.jobs = await window.app.api('/api/research'); } catch (e) {} },
 

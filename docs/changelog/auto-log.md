@@ -33,3 +33,8 @@
 
 - **Son commit:** 59ce38a — chore: test PDF'i gitignore'a ekle
 - **Working tree:** (working tree clean)
+
+## 2026-05-02T17:01:48Z
+
+- **Son commit:** cc33c7c — feat: SPA tek-sayfa akış — dashboard'da inline rapor, ek sayfa açılmıyor
+- **Working tree:** (working tree clean)

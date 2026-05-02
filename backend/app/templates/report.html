@@ -131,6 +131,79 @@
         </div>
       </template>
 
+      <!-- ===== Daha Derin Analiz — iteratif derinleştirme formu ===== -->
+      <template x-if="job.status === 'done' && report">
+        <div class="mt-6 rounded-2xl bg-white ring-1 ring-emerald-200 overflow-hidden"
+             x-data="{open: false}">
+          <button @click="open = !open" class="w-full flex items-center justify-between gap-3 p-5 hover:bg-emerald-50/30 transition">
+            <div class="flex items-center gap-3 text-left">
+              <div class="size-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 grid place-items-center text-white font-bold text-sm shrink-0">+</div>
+              <div class="min-w-0">
+                <div class="text-sm font-semibold text-emerald-900">Daha Derin Analiz</div>
+                <div class="text-[11px] text-emerald-700/80 truncate">Ek bilgiler ekle (kullanıcı adı, e-posta, kurum, şehir...) → daha hedefli rapor</div>
+              </div>
+            </div>
+            <svg :class="open ? 'rotate-180' : ''" class="size-4 text-emerald-700 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+          </button>
+          <div x-show="open" x-transition class="border-t border-emerald-200 p-5 bg-emerald-50/20">
+            <p class="text-xs text-slate-600 mb-4">
+              Bu sonuç doğru kişi/kurumla ilgili mi? Aşağıya ek bilgi ekleyerek daha hedefli yeni bir
+              arama başlatabilirsin. Eklediğin bilgiler arama sorgusuna katılır, eş isim çakışmasını
+              azaltır.
+            </p>
+            <div class="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label class="text-[11px] font-medium text-slate-600 uppercase tracking-wider">Kullanıcı adı / Handle</label>
+                <input type="text" x-model="refine.handle" placeholder="@kullaniciadi"
+                  class="mt-1 w-full rounded-lg ring-1 ring-slate-200 focus:ring-emerald-400 focus:ring-2 px-3 py-2 text-sm outline-none" />
+              </div>
+              <div>
+                <label class="text-[11px] font-medium text-slate-600 uppercase tracking-wider">E-posta</label>
+                <input type="email" x-model="refine.email" placeholder="x@y.com"
+                  class="mt-1 w-full rounded-lg ring-1 ring-slate-200 focus:ring-emerald-400 focus:ring-2 px-3 py-2 text-sm outline-none" />
+              </div>
+              <div>
+                <label class="text-[11px] font-medium text-slate-600 uppercase tracking-wider">Kurum / Şirket</label>
+                <input type="text" x-model="refine.organization" placeholder="TAV Güvenlik AŞ"
+                  class="mt-1 w-full rounded-lg ring-1 ring-slate-200 focus:ring-emerald-400 focus:ring-2 px-3 py-2 text-sm outline-none" />
+              </div>
+              <div>
+                <label class="text-[11px] font-medium text-slate-600 uppercase tracking-wider">Şehir / Ülke</label>
+                <input type="text" x-model="refine.location" placeholder="İstanbul, Türkiye"
+                  class="mt-1 w-full rounded-lg ring-1 ring-slate-200 focus:ring-emerald-400 focus:ring-2 px-3 py-2 text-sm outline-none" />
+              </div>
+              <div>
+                <label class="text-[11px] font-medium text-slate-600 uppercase tracking-wider">Telefon</label>
+                <input type="tel" x-model="refine.phone" placeholder="+90 5XX XXX XX XX"
+                  class="mt-1 w-full rounded-lg ring-1 ring-slate-200 focus:ring-emerald-400 focus:ring-2 px-3 py-2 text-sm outline-none" />
+              </div>
+              <div>
+                <label class="text-[11px] font-medium text-slate-600 uppercase tracking-wider">Web sitesi / Domain</label>
+                <input type="text" x-model="refine.domain" placeholder="example.com"
+                  class="mt-1 w-full rounded-lg ring-1 ring-slate-200 focus:ring-emerald-400 focus:ring-2 px-3 py-2 text-sm outline-none" />
+              </div>
+            </div>
+            <div class="mt-3">
+              <label class="text-[11px] font-medium text-slate-600 uppercase tracking-wider">Ek bağlam / Not (serbest metin)</label>
+              <textarea x-model="refine.note" rows="2" placeholder="Örn: Avukat, Gezi davası tutuklu vekil, ya da: 1985 İstanbul doğumlu mühendis..."
+                class="mt-1 w-full rounded-lg ring-1 ring-slate-200 focus:ring-emerald-400 focus:ring-2 px-3 py-2 text-sm outline-none resize-none"></textarea>
+            </div>
+            <p x-show="refine.error" x-text="refine.error" class="mt-3 text-rose-600 text-sm"></p>
+            <div class="mt-4 flex items-center gap-3 flex-wrap">
+              <button @click="submitRefine()" :disabled="refine.busy"
+                class="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 disabled:opacity-50 text-white font-semibold px-5 py-2.5 text-sm shadow-md">
+                <span x-show="!refine.busy">🔍 Bu Bilgilerle Yeniden Ara</span>
+                <span x-show="refine.busy">Yeni rapor başlatılıyor…</span>
+              </button>
+              <span class="text-[11px] text-slate-500">
+                <span x-show="refineCount > 0">En az <span x-text="refineCount"></span> alan dolduruldu — derinleştirme aktif.</span>
+                <span x-show="refineCount === 0">Hiç değilse 1 alan doldur.</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </template>
+
       <!-- ===== NATO/IC standardı kapsamlı Markdown brief (LLM varsa veya rule-based template) ===== -->
       <template x-if="job.status === 'done' && intelligenceBrief">
         <div class="mt-6 rounded-2xl bg-gradient-to-br from-indigo-50 to-violet-50 ring-1 ring-indigo-200 overflow-hidden"
@@ -799,6 +872,7 @@
       imgFile: null, faceSearchBusy: false, faceResults: null,
       diagnostics: null, showDiag: false,
       pdfBusy: false,
+      refine: { handle: '', email: '', organization: '', location: '', phone: '', domain: '', note: '', busy: false, error: '' },
       intelligenceBrief: '', renderedBrief: '',
       kindFilter: '', showAllSources: false,
       geopoints: [], _map: null,
@@ -1040,6 +1114,48 @@
           `## Sonuç`, r.conclusion,
         ].join('\n');
         navigator.clipboard.writeText(md);
+      },
+      get refineCount() {
+        const r = this.refine;
+        return ['handle','email','organization','location','phone','domain','note']
+          .filter(k => (r[k] || '').trim()).length;
+      },
+      async submitRefine() {
+        if (this.refine.busy) return;
+        if (this.refineCount === 0) {
+          this.refine.error = 'En az 1 alan doldur.';
+          return;
+        }
+        this.refine.busy = true; this.refine.error = '';
+        try {
+          const ctx = {};
+          for (const k of ['handle','email','organization','location','phone','domain','note']) {
+            const v = (this.refine[k] || '').trim();
+            if (v) ctx[k] = v;
+          }
+          const newJob = await window.app.api('/api/research', {
+            method: 'POST',
+            body: JSON.stringify({
+              target: this.job.target,
+              kind: this.job.kind,
+              intensity: this.job.intensity || 'deep',
+              scope: this.job.scope || 'all',
+              parent_id: this.jobId,
+              extra_context: ctx,
+            }),
+          });
+          // SPA: parent (dashboard) içindeyse iframe parent'a postMessage
+          if (window.parent !== window) {
+            window.parent.postMessage({ type: 'osint:open-report', jobId: newJob.id }, '*');
+          } else {
+            // Standalone /research/{id} sayfasındaysa direkt yönlendir
+            window.location.href = `/research/${newJob.id}`;
+          }
+        } catch (e) {
+          this.refine.error = e.message || 'Hata';
+        } finally {
+          this.refine.busy = false;
+        }
       },
       async runFaceSearch() {
         // Yüz/görsel ile 10 dış adaptör paralel sorgulama (FaceCheck/PimEyes/

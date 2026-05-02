@@ -32,6 +32,17 @@ log = logging.getLogger("research")
 router = APIRouter(prefix="/api/research", tags=["research"])
 
 
+class ExtraContext(BaseModel):
+    """Kullanıcı 'Daha Derin Analiz' formundan gönderir — ek seed bilgileri."""
+    handle: Optional[str] = None        # @kullaniciadi (sosyal medya handle)
+    email: Optional[str] = None         # x@y.com
+    organization: Optional[str] = None  # şirket / kurum
+    location: Optional[str] = None      # şehir / ülke
+    phone: Optional[str] = None         # +90 5XX...
+    domain: Optional[str] = None        # web sitesi
+    note: Optional[str] = None          # serbest metin
+
+
 class StartIn(BaseModel):
     target: str = Field(min_length=2, max_length=500)
     kind: str = Field(default="auto")  # auto/person/organization/url/keyword/social
@@ -40,6 +51,8 @@ class StartIn(BaseModel):
     provider: Optional[str] = None
     model: Optional[str] = None
     options: dict = Field(default_factory=dict)
+    parent_id: Optional[int] = None        # iteratif derinleştirme — önceki rapor
+    extra_context: Optional[ExtraContext] = None  # ek seed bilgileri
 
 
 class JobOut(BaseModel):
@@ -149,10 +162,30 @@ def _run_job(job_id: int) -> None:
             "google_cse": _get_search_key(job.user_id, "google_cse", db),
             "companies_house": _get_search_key(job.user_id, "companies_house", db),
         }
+        # Extra context varsa target string'ini genişlet — pipeline daha
+        # hedefli sorgu üretir (örn. "Atalay Tarhanlı + İstanbul + TAV").
+        effective_target = job.target
+        ctx_dict: dict = {}
+        if job.extra_context:
+            try:
+                ctx_dict = json.loads(job.extra_context) or {}
+            except (json.JSONDecodeError, TypeError):
+                ctx_dict = {}
+            if ctx_dict:
+                # Target'a en spesifik 2 alanı (organization + location)
+                # ekle; diğerleri enrichment query'lerinde kullanılır
+                extra_terms: list[str] = []
+                for k in ("organization", "location"):
+                    v = (ctx_dict.get(k) or "").strip()
+                    if v:
+                        extra_terms.append(v)
+                if extra_terms:
+                    effective_target = f"{job.target} " + " ".join(extra_terms)
+
         try:
             sources, diagnostics = asyncio.run(
                 run_pipeline(
-                    job.target,
+                    effective_target,
                     job.kind,
                     intensity=job.intensity or "deep",
                     scope=job.scope or "all",
@@ -219,6 +252,21 @@ def start_research(
 ):
     if data.provider and data.provider not in PROVIDERS:
         raise HTTPException(status_code=400, detail="Unknown provider")
+
+    # Parent doğrulama
+    parent_id = None
+    if data.parent_id:
+        parent = db.get(ResearchJob, data.parent_id)
+        if parent and parent.user_id == user.id:
+            parent_id = parent.id
+
+    # Extra context'i JSON olarak sakla
+    extra_ctx_json = None
+    if data.extra_context:
+        ctx_dict = {k: v for k, v in data.extra_context.model_dump().items() if v}
+        if ctx_dict:
+            extra_ctx_json = json.dumps(ctx_dict, ensure_ascii=False)
+
     job = ResearchJob(
         user_id=user.id,
         target=data.target.strip(),
@@ -227,6 +275,8 @@ def start_research(
         scope=data.scope if data.scope in ("web", "social", "all") else "all",
         status="pending",
         used_llm=data.provider,
+        parent_id=parent_id,
+        extra_context=extra_ctx_json,
     )
     db.add(job)
     db.commit()
