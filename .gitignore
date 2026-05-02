@@ -50,3 +50,6 @@ logs/
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Test çıktıları
+docs/changelog/test-pdf-output.pdf

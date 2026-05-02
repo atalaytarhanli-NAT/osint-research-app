@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -21,6 +24,7 @@ from ..llm.intelligence_brief import build_intelligence_brief
 from ..llm.providers import PROVIDERS
 from ..models import ApiKey, ResearchJob, SystemApiKey, User
 from ..osint.pipeline import collect_geopoints, run_pipeline
+from ..pdf_export import render_pdf
 
 
 log = logging.getLogger("research")
@@ -294,3 +298,42 @@ def delete_job(
         raise HTTPException(status_code=404, detail="Job not found")
     db.delete(job)
     db.commit()
+
+
+@router.get("/{job_id}/export.pdf")
+def export_pdf(
+    job_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Server-side rendered PDF rapor (xhtml2pdf, text-search'lü, A4)."""
+    job = db.get(ResearchJob, job_id)
+    if job is None or job.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != "done" or not job.result_json:
+        raise HTTPException(status_code=400, detail="Job not complete")
+    try:
+        result = json.loads(job.result_json)
+    except (json.JSONDecodeError, TypeError):
+        raise HTTPException(status_code=500, detail="Job result corrupt")
+
+    try:
+        pdf_bytes = render_pdf(
+            target=job.target,
+            kind=job.kind or "auto",
+            report=result.get("report") or {},
+            sources=result.get("sources") or [],
+            brief_md=result.get("intelligence_brief"),
+            used_llm=job.used_llm or "rule-based",
+        )
+    except Exception as exc:
+        log.exception("PDF export failed for job %s", job_id)
+        raise HTTPException(status_code=500, detail=f"PDF üretimi başarısız: {exc}")
+
+    safe_target = re.sub(r"[^a-zA-Z0-9]+", "-", job.target.lower()).strip("-")[:40] or "rapor"
+    filename = f"osint-{job_id}-{safe_target}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

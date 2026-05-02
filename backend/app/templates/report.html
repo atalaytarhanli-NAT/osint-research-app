@@ -951,36 +951,29 @@
         navigator.clipboard.writeText(md);
       },
       async downloadPdf() {
-        if (this.pdfBusy || typeof html2pdf === 'undefined') return;
+        // Server-side render: text-search'lü, sayfa-uyumlu, profesyonel rapor
+        // (eski html2pdf screenshot tarzı yaklaşım kaldırıldı — bölünme/eksik içerik yapıyordu)
+        if (this.pdfBusy) return;
         this.pdfBusy = true;
         try {
-          // Brief paneli kapalıysa açtır (Mermaid render için DOM'da olmalı)
-          const briefBtn = document.querySelector('[x-data*="open"] button');
-          // Aside (sidebar) hariç ana rapor içeriği
-          const main = document.querySelector('.lg\\:grid-cols-\\[1fr_280px\\] > div:first-child')
-                    || document.querySelector('section');
-          if (!main) { this.pdfBusy = false; return; }
-          // Harita Leaflet canvas için kısa delay (tile yüklenmesi)
-          await new Promise(r => setTimeout(r, 500));
-          if (this._map) try { this._map.invalidateSize(); } catch {}
-          // Mermaid SVG'lerinin yüklendiğinden emin ol
-          await new Promise(r => setTimeout(r, 800));
-
-          const opt = {
-            margin: [10, 10, 10, 10],
-            filename: `osint-rapor-${this.jobId}-${(this.job.target || 'rapor').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.pdf`,
-            image: { type: 'jpeg', quality: 0.92 },
-            html2canvas: {
-              scale: 1.5, useCORS: true, allowTaint: true,
-              backgroundColor: '#ffffff', logging: false,
-              windowWidth: 1100,
-            },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
-          };
-          await html2pdf().set(opt).from(main).save();
+          const url = `/api/research/${this.jobId}/export.pdf`;
+          const r = await fetch(url, { credentials: 'include' });
+          if (!r.ok) {
+            const errText = await r.text().catch(() => '');
+            throw new Error(`HTTP ${r.status}: ${errText.slice(0, 200)}`);
+          }
+          const blob = await r.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          const safeName = (this.job.target || 'rapor').replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 40);
+          a.href = blobUrl;
+          a.download = `osint-${this.jobId}-${safeName}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
         } catch (e) {
-          alert('PDF üretimi hata aldı: ' + (e?.message || e));
+          alert('PDF üretimi başarısız: ' + (e?.message || e));
         } finally {
           this.pdfBusy = false;
         }

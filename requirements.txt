@@ -18,3 +18,5 @@ python-dateutil==2.9.0.post0
 itsdangerous==2.2.0
 dnstwist==20250130
 Pillow==11.0.0
+markdown==3.7
+xhtml2pdf==0.2.16
