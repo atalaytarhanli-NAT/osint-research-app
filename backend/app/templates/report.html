@@ -638,10 +638,16 @@
           <aside class="space-y-3">
             <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-4">
               <div class="text-[11px] uppercase tracking-widest text-brand-600 font-semibold">İndir</div>
-              <div class="mt-2 grid grid-cols-2 gap-2">
-                <button @click="downloadJson()" class="text-xs rounded-lg ring-1 ring-slate-200 px-3 py-1.5 hover:bg-slate-50">JSON</button>
-                <button @click="copyMarkdown()" class="text-xs rounded-lg ring-1 ring-slate-200 px-3 py-1.5 hover:bg-slate-50">Markdown</button>
+              <div class="mt-2 grid grid-cols-3 gap-2">
+                <button @click="downloadJson()" class="text-xs rounded-lg ring-1 ring-slate-200 px-2 py-1.5 hover:bg-slate-50">JSON</button>
+                <button @click="copyMarkdown()" class="text-xs rounded-lg ring-1 ring-slate-200 px-2 py-1.5 hover:bg-slate-50">MD</button>
+                <button @click="downloadPdf()" :disabled="pdfBusy"
+                  class="text-xs rounded-lg ring-1 ring-brand-300 bg-brand-50 px-2 py-1.5 hover:bg-brand-100 disabled:opacity-50 disabled:cursor-not-allowed text-brand-700 font-medium"
+                  :class="pdfBusy ? 'animate-pulse' : ''">
+                  <span x-text="pdfBusy ? '...' : 'PDF'"></span>
+                </button>
               </div>
+              <div x-show="pdfBusy" class="mt-2 text-[10px] text-slate-500">Mermaid+harita render bekleniyor, ~5-10 sn...</div>
             </div>
 
             <div class="rounded-2xl bg-white ring-1 ring-slate-200 p-4">
@@ -702,6 +708,7 @@
       jobId, job: null, report: null, sources: [], imgUrl: '',
       imgExif: null, imgUploading: false,
       diagnostics: null, showDiag: false,
+      pdfBusy: false,
       intelligenceBrief: '', renderedBrief: '',
       kindFilter: '', showAllSources: false,
       geopoints: [], _map: null,
@@ -942,6 +949,41 @@
           `## Sonuç`, r.conclusion,
         ].join('\n');
         navigator.clipboard.writeText(md);
+      },
+      async downloadPdf() {
+        if (this.pdfBusy || typeof html2pdf === 'undefined') return;
+        this.pdfBusy = true;
+        try {
+          // Brief paneli kapalıysa açtır (Mermaid render için DOM'da olmalı)
+          const briefBtn = document.querySelector('[x-data*="open"] button');
+          // Aside (sidebar) hariç ana rapor içeriği
+          const main = document.querySelector('.lg\\:grid-cols-\\[1fr_280px\\] > div:first-child')
+                    || document.querySelector('section');
+          if (!main) { this.pdfBusy = false; return; }
+          // Harita Leaflet canvas için kısa delay (tile yüklenmesi)
+          await new Promise(r => setTimeout(r, 500));
+          if (this._map) try { this._map.invalidateSize(); } catch {}
+          // Mermaid SVG'lerinin yüklendiğinden emin ol
+          await new Promise(r => setTimeout(r, 800));
+
+          const opt = {
+            margin: [10, 10, 10, 10],
+            filename: `osint-rapor-${this.jobId}-${(this.job.target || 'rapor').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.pdf`,
+            image: { type: 'jpeg', quality: 0.92 },
+            html2canvas: {
+              scale: 1.5, useCORS: true, allowTaint: true,
+              backgroundColor: '#ffffff', logging: false,
+              windowWidth: 1100,
+            },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+          };
+          await html2pdf().set(opt).from(main).save();
+        } catch (e) {
+          alert('PDF üretimi hata aldı: ' + (e?.message || e));
+        } finally {
+          this.pdfBusy = false;
+        }
       },
     };
   }
