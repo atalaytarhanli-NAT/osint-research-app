@@ -13,6 +13,7 @@ from .archive_today import archive_today_lookup
 from .arxiv import search_arxiv
 from .base import SourceResult
 from .bing_search import search_bing
+from .brave_search import search_brave
 from .crtsh import search_crtsh
 from .gdelt import search_gdelt
 from .github_oss import search_github
@@ -65,7 +66,7 @@ def _quote_for_search(target: str, kind: str) -> str:
     return t
 
 
-async def _web_pass(query: str, raw_target: str, kind: str) -> list[SourceResult]:
+async def _web_pass(query: str, raw_target: str, kind: str, brave_key: str = "") -> list[SourceResult]:
     tasks = [
         _safe("ddg", search_web(query)),
         _safe("ddg_news", search_news(query)),
@@ -81,6 +82,8 @@ async def _web_pass(query: str, raw_target: str, kind: str) -> list[SourceResult
         _safe("wayback", wayback_lookup(raw_target)),
         _safe("archive_today", archive_today_lookup(raw_target)),
     ]
+    if brave_key:
+        tasks.append(_safe("brave", search_brave(query, brave_key)))
     if kind == "url":
         tasks.append(_safe("crtsh", search_crtsh(raw_target)))
     if kind in ("person", "organization", "auto"):
@@ -170,7 +173,7 @@ def _refine_queries(target: str, sources: list[SourceResult], k: int = 3) -> lis
     return queries
 
 
-async def _second_pass(query: str, refined_queries: list[str]) -> list[SourceResult]:
+async def _second_pass(query: str, refined_queries: list[str], brave_key: str = "") -> list[SourceResult]:
     if not refined_queries:
         return []
     tasks = []
@@ -179,6 +182,8 @@ async def _second_pass(query: str, refined_queries: list[str]) -> list[SourceRes
         tasks.append(_safe("bing2", search_bing(q, max_results=8)))
         tasks.append(_safe("yandex2", search_yandex(q, max_results=6)))
         tasks.append(_safe("gdelt2", search_gdelt(q, max_records=8)))
+        if brave_key:
+            tasks.append(_safe("brave2", search_brave(q, brave_key, max_results=8)))
     chunks = await asyncio.gather(*tasks)
     flat: list[SourceResult] = []
     for chunk in chunks:
@@ -206,26 +211,29 @@ async def run_pipeline(
     kind_hint: str = "auto",
     intensity: str = "deep",
     scope: str = "all",
+    brave_key: str = "",
 ) -> list[dict[str, Any]]:
     """
     intensity: 'quick' (1 pass) | 'deep' (2 pass)
     scope:     'web' | 'social' | 'all'
+    brave_key: opsiyonel Brave Search API anahtarı (Render IP'lerinden iyi sonuç verir)
     """
     kind = detect_kind(target, kind_hint)
     query = _quote_for_search(target, kind)
 
     first: list[SourceResult] = []
     if scope in ("web", "all"):
-        first.extend(await _web_pass(query, target, kind))
+        first.extend(await _web_pass(query, target, kind, brave_key=brave_key))
     if scope in ("social", "all"):
         first.extend(await _social_pass(query, target, kind))
 
-    log.info("OSINT first pass: %d sources for %r (scope=%s)", len(first), target, scope)
+    log.info("OSINT first pass: %d sources for %r (scope=%s, brave=%s)",
+             len(first), target, scope, "on" if brave_key else "off")
 
     if intensity == "deep" and scope in ("web", "all"):
         refined = _refine_queries(target, first, k=3)
         log.info("OSINT refined queries: %s", refined)
-        second = await _second_pass(query, refined)
+        second = await _second_pass(query, refined, brave_key=brave_key)
         log.info("OSINT second pass: %d sources", len(second))
         all_results = first + second
     else:

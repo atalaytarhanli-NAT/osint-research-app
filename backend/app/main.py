@@ -14,6 +14,7 @@ from .api import auth as auth_api
 from .api import image_search as image_api
 from .api import research as research_api
 from .api import settings as settings_api
+from .llm.providers import llm_providers, search_providers
 from .auth import get_optional_user
 from .config import get_settings
 from .database import init_db
@@ -83,7 +84,7 @@ def dashboard_page(request: Request, user=Depends(get_optional_user)):
         return RedirectResponse(url="/login", status_code=302)
     return templates.TemplateResponse(
         "dashboard.html",
-        {"request": request, "user": user, "providers": list(PROVIDERS.values())},
+        {"request": request, "user": user, "providers": llm_providers()},
     )
 
 
@@ -109,7 +110,12 @@ def settings_page(request: Request, user=Depends(get_optional_user)):
         return RedirectResponse(url="/login", status_code=302)
     return templates.TemplateResponse(
         "settings.html",
-        {"request": request, "user": user, "providers": list(PROVIDERS.values())},
+        {
+            "request": request,
+            "user": user,
+            "llm_providers": llm_providers(),
+            "search_providers": search_providers(),
+        },
     )
 
 
@@ -121,5 +127,11 @@ def admin_page(request: Request, user=Depends(get_optional_user)):
         return RedirectResponse(url="/dashboard", status_code=302)
     return templates.TemplateResponse(
         "admin.html",
-        {"request": request, "user": user, "providers": list(PROVIDERS.values())},
+        {
+            "request": request,
+            "user": user,
+            "providers": list(PROVIDERS.values()),
+            "llm_providers": llm_providers(),
+            "search_providers": search_providers(),
+        },
     )

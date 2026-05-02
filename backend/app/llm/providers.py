@@ -30,7 +30,8 @@ class ProviderSpec:
     docs_url: str
     key_hint: str
     base_url: str
-    style: str  # "openai" | "anthropic" | "gemini" | "hf"
+    style: str  # "openai" | "anthropic" | "gemini" | "hf" | "search"
+    kind: str = "llm"  # "llm" | "search"
 
 
 PROVIDERS: dict[str, ProviderSpec] = {
@@ -126,7 +127,30 @@ PROVIDERS: dict[str, ProviderSpec] = {
         base_url="https://api.openai.com/v1",
         style="openai",
     ),
+    # ---- Search engines (kind="search") ----
+    # LLM seçim listesinde gözükmez ama admin sistem-key'lerinde yönetilebilir.
+    "brave": ProviderSpec(
+        id="brave",
+        name="Brave Search",
+        open_source=False,
+        free_tier=True,
+        default_model="",
+        models=[],
+        docs_url="https://api.search.brave.com/app/keys",
+        key_hint="BSA…",
+        base_url="https://api.search.brave.com/res/v1",
+        style="search",
+        kind="search",
+    ),
 }
+
+
+def llm_providers() -> list[ProviderSpec]:
+    return [p for p in PROVIDERS.values() if p.kind == "llm"]
+
+
+def search_providers() -> list[ProviderSpec]:
+    return [p for p in PROVIDERS.values() if p.kind == "search"]
 
 
 def default_model_for(provider_id: str) -> str:

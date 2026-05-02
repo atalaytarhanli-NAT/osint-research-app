@@ -20,14 +20,14 @@ from .providers import call_llm
 log = logging.getLogger("analyzer")
 
 
-SYSTEM_PROMPT = """Sen bir OSINT analistisin. Sana hedef konu hakkında açık kaynaklardan derlenmiş ham veri verilecek. Aşağıdaki kesin JSON şemasında Türkçe rapor üreteceksin. Şu kurallara uyacaksın:
+SYSTEM_PROMPT = """Sen bir OSINT analistisin. Sana hedef konu hakkında açık kaynaklardan derlenmiş ham veri verilecek. Aşağıdaki kesin JSON şemasında SADECE TÜRKÇE rapor üreteceksin. Diğer dillerden tek kelime karıştırma. Şu kurallara KESİNLİKLE uyacaksın:
 
-- Yalnızca verilen kaynaklara dayan; uydurma yapma.
-- ÇAPRAZ DOĞRULAMA ZORUNLU: Bir iddiayı raporda kullanmadan önce kaç bağımsız kaynak (farklı domain/source) tarafından desteklendiğini say. 1 kaynak → "single" (iddia), 2 farklı kaynak → "double" (doğrulanmış), 3+ farklı kaynak → "triple" (kuvvetli doğrulanmış). Çelişen kaynaklar varsa "conflicting".
-- Her bulguya `source_indices` (kaynak listesindeki sıra numaraları) zorunlu olarak ver.
-- Doğrulanmış / iddia / söylenti / yorum ayrımına dikkat et.
-- Belirsizse cümlede "(iddia)" veya "(doğrulanmamış)" parantezi koy.
-- Çıktı YALNIZCA geçerli JSON, ek açıklama YAZMA.
+- KENDİ ÖN BİLGİLERİNİ KULLANMA. "Atalay Tarhanlı kimdir biliyorum"u unut. SADECE aşağıda verilen kaynaklarda yazılana dayan.
+- Bir iddiayı raporda kullanmadan önce hangi kaynak indeksinden geldiğini `source_indices` listesinde belirt. Boş `source_indices` ile iddia yazmak YASAK.
+- Eğer kaynaklar listesi BOŞ ise: overview="Açık kaynaklarda yeterli veri bulunamadı.", top_findings=[], cross_verification=[], identity.definition="Veri yetersiz.", diğer tüm alanları minimum default ile doldur ve risk_level="low", confidence=0.05.
+- ÇAPRAZ DOĞRULAMA: Bir iddiayı kaç bağımsız kaynak (farklı domain) destekliyor? 1 → "single", 2 → "double", 3+ → "triple", çelişen → "conflicting".
+- Doğrulanmış / iddia / söylenti / yorum ayrımına dikkat et. Belirsizse cümlede "(iddia)" veya "(doğrulanmamış)" parantezi koy.
+- Çıktı YALNIZCA geçerli JSON, ek açıklama YAZMA, kod bloğu (```) kullanma.
 
 JSON şeması:
 {
@@ -107,6 +107,13 @@ async def build_report(
     api_key: Optional[str],
     model: Optional[str],
 ) -> dict[str, Any]:
+    # Hallucination guard: kaynak yoksa LLM'e gitmeden dürüst "veri yok" raporu döndür.
+    # LLM, sources listesi boşken kendi training verisinden uydurma yapma eğilimindedir.
+    if not sources:
+        report = _empty_report(target, kind)
+        report["used_llm"] = "rule-based (no sources)"
+        return report
+
     if provider_id and api_key:
         try:
             raw = await call_llm(
@@ -118,6 +125,8 @@ async def build_report(
             )
             cleaned = _strip_code_fence(raw)
             data = json.loads(cleaned)
+            # Post-validation: LLM hallucination önleme — iddia source_indices içermiyorsa düşür
+            data = _strip_unsupported_claims(data, len(sources))
             data["used_llm"] = f"{provider_id}:{model or ''}"
             return data
         except Exception as exc:
@@ -126,6 +135,98 @@ async def build_report(
     report = _rule_based_report(target, kind, sources)
     report["used_llm"] = "rule-based"
     return report
+
+
+def _empty_report(target: str, kind: str) -> dict[str, Any]:
+    return {
+        "executive_summary": {
+            "overview": (
+                f"'{target}' için açık kaynaklarda yeterli veri bulunamadı. "
+                "Hedefin yazımını kontrol et, daha spesifik bir bağlam ekle "
+                "(örn. kurum adı, lokasyon) veya farklı bir varyasyon dene."
+            ),
+            "top_findings": [],
+            "confidence": 0.05,
+            "risk_level": "low",
+        },
+        "cross_verification": [],
+        "identity": {
+            "definition": "Veri yetersiz.",
+            "context": "—",
+            "known_links": [],
+            "name_collision_risk": "değerlendirilemedi (kaynak yok)",
+        },
+        "digital_footprint": {
+            "web": "Açık webde sonuç bulunamadı.",
+            "news": "Haber sonucu bulunamadı.",
+            "social": "Sosyal medya izi bulunamadı.",
+            "media": "Görsel/video kaynak bulunamadı.",
+            "archive": "Arşiv kaydı bulunamadı.",
+        },
+        "timeline": [],
+        "relations": [],
+        "content_analysis": {
+            "main_claim": "—",
+            "tone": "değerlendirilemedi",
+            "manipulation_risk": "düşük (veri yok)",
+            "verifiability": 0.0,
+        },
+        "risk": {
+            "legal": "değerlendirilemedi — kaynak yok",
+            "operational": "değerlendirilemedi — kaynak yok",
+            "commercial": "değerlendirilemedi — kaynak yok",
+            "reputation": "değerlendirilemedi — kaynak yok",
+        },
+        "open_questions": [
+            "Hedef adının yazımı doğru mu?",
+            "Daha spesifik bir bağlam (kurum, lokasyon, sektör) eklenebilir mi?",
+            "Kullanıcı adı (sosyal handle) biliniyorsa onunla ayrı bir arama denenebilir mi?",
+        ],
+        "next_steps": [
+            "Hedef adına kurum/şehir bilgisi ekleyip yeniden ara",
+            "Sosyal medya kullanıcı adı ile (örn. @atalay) ayrı arama yap",
+            "URL/domain biliyorsan onunla arama yap (Wayback + crt.sh aktif olur)",
+        ],
+        "conclusion": (
+            "Mevcut açık kaynaklarda hedefe dair doğrulanabilir veri tespit edilemedi. "
+            "Bu, hedefin var olmadığını değil, sadece açık webde dijital izinin "
+            "yeterli olmadığını veya arama motorlarının (DDG/Bing/Yandex) bot tespiti "
+            "ile sonuç döndürmediğini gösterir."
+        ),
+    }
+
+
+def _strip_unsupported_claims(data: dict, source_count: int) -> dict:
+    """LLM bazen kaynaksız iddia üretir. Bu fonksiyon source_indices'i geçersiz veya
+    boş olan top_findings/cross_verification/timeline/relations entry'lerini ayıklar."""
+
+    def valid(idxs):
+        if not idxs:
+            return False
+        return all(isinstance(i, int) and 0 <= i < source_count for i in idxs)
+
+    es = data.get("executive_summary", {})
+    if "top_findings" in es and isinstance(es["top_findings"], list):
+        es["top_findings"] = [
+            f for f in es["top_findings"]
+            if not (isinstance(f, dict) and not valid(f.get("source_indices")))
+        ]
+    cv = data.get("cross_verification") or []
+    if isinstance(cv, list):
+        data["cross_verification"] = [
+            v for v in cv if isinstance(v, dict) and valid(v.get("source_indices"))
+        ]
+    tl = data.get("timeline") or []
+    if isinstance(tl, list):
+        data["timeline"] = [
+            t for t in tl if isinstance(t, dict) and valid(t.get("source_indices"))
+        ]
+    rel = data.get("relations") or []
+    if isinstance(rel, list):
+        data["relations"] = [
+            r for r in rel if isinstance(r, dict) and valid(r.get("source_indices"))
+        ]
+    return data
 
 
 # ----------------------- rule-based fallback -----------------------

@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+import os
+
 from ..auth import get_current_user
 from ..crypto import decrypt
 from ..database import SessionLocal, get_db
@@ -67,11 +69,10 @@ def _serialize(job: ResearchJob) -> JobDetailOut:
 
 
 def _select_provider(user_id: int, requested: Optional[str], db: Session):
-    """Return (provider_id, key, model) or (None, None, None) for rule-based fallback.
+    """Return (provider_id, key, model) for LLM, or (None, None, None) for rule-based.
 
-    Order: user's requested → user's keys (in preference order) → system-wide
-    admin-set keys (preference order). All preference order: open-source/free first.
-    """
+    Order: user's requested → user's keys (preference order) → system-wide admin
+    keys (preference order). Open-source / free providers preferred."""
     user_keys = {
         k.provider: (decrypt(k.encrypted_value), k.model)
         for k in db.scalars(select(ApiKey).where(ApiKey.user_id == user_id)).all()
@@ -82,6 +83,10 @@ def _select_provider(user_id: int, requested: Optional[str], db: Session):
     sys_keys = {r.provider: (decrypt(r.encrypted_value), r.model) for r in sys_keys_rows}
 
     def pick(provider: str):
+        # Search engines (brave) shouldn't be picked as LLM
+        spec = PROVIDERS.get(provider)
+        if spec and getattr(spec, "kind", "llm") == "search":
+            return None
         if provider in user_keys and user_keys[provider][0]:
             p, m = user_keys[provider]
             return provider, p, m
@@ -103,6 +108,25 @@ def _select_provider(user_id: int, requested: Optional[str], db: Session):
     return None, None, None
 
 
+def _get_search_key(user_id: int, provider: str, db: Session) -> str:
+    """Get a search engine API key. Order: user's key → system key → env var."""
+    uk = db.scalar(
+        select(ApiKey).where(ApiKey.user_id == user_id, ApiKey.provider == provider)
+    )
+    if uk:
+        plain = decrypt(uk.encrypted_value)
+        if plain:
+            return plain
+    sk = db.scalar(
+        select(SystemApiKey).where(SystemApiKey.provider == provider, SystemApiKey.enabled == True)  # noqa
+    )
+    if sk:
+        plain = decrypt(sk.encrypted_value)
+        if plain:
+            return plain
+    return os.environ.get(f"APP_{provider.upper()}_API_KEY", "") or ""
+
+
 def _run_job(job_id: int) -> None:
     db = SessionLocal()
     try:
@@ -113,6 +137,7 @@ def _run_job(job_id: int) -> None:
         db.commit()
 
         provider_id, key, model = _select_provider(job.user_id, job.used_llm, db)
+        brave_key = _get_search_key(job.user_id, "brave", db)
         try:
             sources = asyncio.run(
                 run_pipeline(
@@ -120,6 +145,7 @@ def _run_job(job_id: int) -> None:
                     job.kind,
                     intensity=job.intensity or "deep",
                     scope=job.scope or "all",
+                    brave_key=brave_key,
                 )
             )
             report = asyncio.run(
